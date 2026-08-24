@@ -134,6 +134,10 @@ class InvoiceProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  List<InvoiceModel> getInvoicesForCustomer(String customerId) {
+    return _invoices.where((i) => i.customerId == customerId || i.customerSnapshot.id == customerId).toList();
+  }
+
   Future<InvoiceModel> createInvoice({
     required CustomerModel customer,
     required BusinessModel business,
@@ -146,6 +150,8 @@ class InvoiceProvider with ChangeNotifier {
     double otherCharges = 0,
     String status = 'ISSUED',
     double amountPaid = 0,
+    String paymentType = 'Cash',
+    String description = '',
     String notes = '',
     String termsAndConditions = '',
   }) async {
@@ -169,6 +175,7 @@ class InvoiceProvider with ChangeNotifier {
 
     final paid = amountPaid;
     final balance = (calculated.grandTotal - paid).clamp(0.0, calculated.grandTotal);
+    final excess = paid > calculated.grandTotal ? paid - calculated.grandTotal : 0.0;
 
     String finalStatus = status;
     if (paid >= calculated.grandTotal && calculated.grandTotal > 0) {
@@ -234,8 +241,11 @@ class InvoiceProvider with ChangeNotifier {
       grandTotal: calculated.grandTotal,
       amountPaid: paid,
       balanceDue: balance,
+      excessAmount: excess,
+      paymentType: paymentType,
+      description: description.isNotEmpty ? description : notes,
       status: finalStatus,
-      notes: notes.isNotEmpty ? notes : 'Thank you for your business!',
+      notes: notes.isNotEmpty ? notes : (description.isNotEmpty ? description : 'Thank you for your business!'),
       termsAndConditions: termsAndConditions.isNotEmpty ? termsAndConditions : business.termsAndConditions,
       amountInWords: words,
     );
@@ -243,6 +253,7 @@ class InvoiceProvider with ChangeNotifier {
     // Save to API in background if possible
     _api.post(Endpoints.invoices, {
       'customerId': customer.id,
+      'customerName': customer.name,
       'invoiceNumber': finalInvNum,
       'invoiceDate': date.toIso8601String(),
       'dueDate': due.toIso8601String(),
@@ -252,6 +263,8 @@ class InvoiceProvider with ChangeNotifier {
       'otherCharges': otherCharges,
       'status': finalStatus,
       'amountPaid': paid,
+      'paymentType': paymentType,
+      'description': description,
       'notes': notes,
       'termsAndConditions': termsAndConditions,
     });

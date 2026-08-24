@@ -125,6 +125,9 @@ class InvoiceModel {
   final double grandTotal;
   final double amountPaid;
   final double balanceDue;
+  final double excessAmount;
+  final String paymentType; // 'Cash', 'Bank Transfer', 'UPI', 'Cheque'
+  final String description;
   final String status; // 'DRAFT', 'ISSUED', 'PAID', 'PARTIALLY_PAID', 'CANCELLED'
   final String notes;
   final String termsAndConditions;
@@ -155,6 +158,9 @@ class InvoiceModel {
     required this.grandTotal,
     this.amountPaid = 0,
     this.balanceDue = 0,
+    this.excessAmount = 0,
+    this.paymentType = 'Cash',
+    this.description = '',
     this.status = 'ISSUED',
     this.notes = '',
     this.termsAndConditions = '',
@@ -163,6 +169,8 @@ class InvoiceModel {
   });
 
   bool get isPaid => status == 'PAID' || balanceDue <= 0;
+  bool get hasOverMoney => excessAmount > 0 || (amountPaid > grandTotal && grandTotal > 0);
+  double get overMoneyAmount => excessAmount > 0 ? excessAmount : (amountPaid > grandTotal ? amountPaid - grandTotal : 0.0);
 
   factory InvoiceModel.fromJson(Map<String, dynamic> json) {
     var rawItems = json['items'] as List<dynamic>? ?? [];
@@ -188,6 +196,11 @@ class InvoiceModel {
     DateTime due = DateTime.tryParse(json['dueDate']?.toString() ?? '') ??
         invDate.add(const Duration(days: 15));
 
+    final gTotal = (json['grandTotal'] as num?)?.toDouble() ?? 0.0;
+    final aPaid = (json['amountPaid'] as num?)?.toDouble() ?? 0.0;
+    final bDue = (json['balanceDue'] as num?)?.toDouble() ?? 0.0;
+    final exAmount = (json['excessAmount'] as num?)?.toDouble() ?? (aPaid > gTotal ? aPaid - gTotal : 0.0);
+
     return InvoiceModel(
       id: json['_id']?.toString() ?? json['id']?.toString() ?? '',
       invoiceNumber: json['invoiceNumber']?.toString() ?? 'INV-0001',
@@ -209,9 +222,12 @@ class InvoiceModel {
       totalTax: (json['totalTax'] as num?)?.toDouble() ?? 0.0,
       otherCharges: (json['otherCharges'] as num?)?.toDouble() ?? 0.0,
       roundOff: (json['roundOff'] as num?)?.toDouble() ?? 0.0,
-      grandTotal: (json['grandTotal'] as num?)?.toDouble() ?? 0.0,
-      amountPaid: (json['amountPaid'] as num?)?.toDouble() ?? 0.0,
-      balanceDue: (json['balanceDue'] as num?)?.toDouble() ?? 0.0,
+      grandTotal: gTotal,
+      amountPaid: aPaid,
+      balanceDue: bDue,
+      excessAmount: exAmount,
+      paymentType: json['paymentType']?.toString() ?? 'Cash',
+      description: json['description']?.toString() ?? json['notes']?.toString() ?? '',
       status: json['status']?.toString() ?? 'ISSUED',
       notes: json['notes']?.toString() ?? '',
       termsAndConditions: json['termsAndConditions']?.toString() ?? '',
@@ -244,6 +260,9 @@ class InvoiceModel {
       'grandTotal': grandTotal,
       'amountPaid': amountPaid,
       'balanceDue': balanceDue,
+      'excessAmount': excessAmount,
+      'paymentType': paymentType,
+      'description': description,
       'status': status,
       'notes': notes,
       'termsAndConditions': termsAndConditions,
@@ -275,6 +294,9 @@ class InvoiceModel {
     double? grandTotal,
     double? amountPaid,
     double? balanceDue,
+    double? excessAmount,
+    String? paymentType,
+    String? description,
     String? status,
     String? notes,
     String? termsAndConditions,
@@ -305,6 +327,9 @@ class InvoiceModel {
       grandTotal: grandTotal ?? this.grandTotal,
       amountPaid: amountPaid ?? this.amountPaid,
       balanceDue: balanceDue ?? this.balanceDue,
+      excessAmount: excessAmount ?? this.excessAmount,
+      paymentType: paymentType ?? this.paymentType,
+      description: description ?? this.description,
       status: status ?? this.status,
       notes: notes ?? this.notes,
       termsAndConditions: termsAndConditions ?? this.termsAndConditions,

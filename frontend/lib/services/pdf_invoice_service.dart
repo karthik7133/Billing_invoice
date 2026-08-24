@@ -266,6 +266,40 @@ class PdfInvoiceService {
                     ),
                     pw.SizedBox(height: 8),
 
+                    // Description & Notes
+                    if (invoice.description.isNotEmpty || invoice.notes.isNotEmpty) ...[
+                      pw.Container(
+                        padding: const pw.EdgeInsets.all(6),
+                        decoration: pw.BoxDecoration(
+                          color: PdfColors.grey100,
+                          border: pw.Border.all(color: PdfColors.grey300, width: 0.6),
+                          borderRadius: pw.BorderRadius.circular(3),
+                        ),
+                        child: pw.Column(
+                          crossAxisAlignment: pw.CrossAxisAlignment.start,
+                          children: [
+                            pw.Text('Notes / Description:', style: pw.TextStyle(font: fontBold, fontSize: 8)),
+                            pw.Text(
+                              invoice.description.isNotEmpty ? invoice.description : invoice.notes,
+                              style: pw.TextStyle(font: fontRegular, fontSize: 8),
+                            ),
+                          ],
+                        ),
+                      ),
+                      pw.SizedBox(height: 6),
+                    ],
+
+                    // Payment Method Badge
+                    if (invoice.paymentType.isNotEmpty) ...[
+                      pw.Row(
+                        children: [
+                          pw.Text('Payment Type: ', style: pw.TextStyle(font: fontBold, fontSize: 8)),
+                          pw.Text(invoice.paymentType, style: pw.TextStyle(font: fontRegular, fontSize: 8, color: PdfColors.blue900)),
+                        ],
+                      ),
+                      pw.SizedBox(height: 6),
+                    ],
+
                     // Bank Details
                     if (business.bankDetails.accountNumber.isNotEmpty || business.bankDetails.upiId.isNotEmpty) ...[
                       pw.Text('Bank & Payment Details:', style: pw.TextStyle(font: fontBold, fontSize: 8.5, color: PdfColors.blue900)),
@@ -319,9 +353,26 @@ class PdfInvoiceService {
                         ],
                       ),
                       if (invoice.amountPaid > 0) ...[
-                        pw.SizedBox(height: 3),
-                        _buildSummaryRow('Paid Amount:', '₹ ${invoice.amountPaid.toStringAsFixed(2)}', color: PdfColors.green700),
-                        _buildSummaryRow('Balance Due:', '₹ ${invoice.balanceDue.toStringAsFixed(2)}', fontBold: fontBold, color: PdfColors.red700),
+                        pw.SizedBox(height: 4),
+                        _buildSummaryRow('Received / Paid:', '₹ ${invoice.amountPaid.toStringAsFixed(2)}', color: PdfColors.green700, fontBold: fontBold),
+                        _buildSummaryRow('Balance Due:', '₹ ${invoice.balanceDue.toStringAsFixed(2)}', fontBold: fontBold, color: invoice.balanceDue > 0 ? PdfColors.red700 : PdfColors.green700),
+                      ],
+                      if (invoice.hasOverMoney) ...[
+                        pw.SizedBox(height: 4),
+                        pw.Container(
+                          padding: const pw.EdgeInsets.symmetric(vertical: 3, horizontal: 4),
+                          decoration: pw.BoxDecoration(
+                            color: PdfColors.blue50,
+                            borderRadius: pw.BorderRadius.circular(2),
+                            border: pw.Border.all(color: PdfColors.blue200, width: 0.5),
+                          ),
+                          child: _buildSummaryRow(
+                            'Extra / Over Money:',
+                            '₹ ${invoice.overMoneyAmount.toStringAsFixed(2)}',
+                            fontBold: fontBold,
+                            color: PdfColors.blue900,
+                          ),
+                        ),
                       ],
                     ],
                   ),

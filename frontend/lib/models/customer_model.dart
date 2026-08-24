@@ -11,7 +11,12 @@ class CustomerModel {
   final String pincode;
   final String gstin;
   final String pan;
+  final String billingName;
+  final double openingBalance;
+  final double balance; // Positive = Receivable ("You'll Get"), Negative = Payable ("You'll Give")
+  final String partyType; // 'CUSTOMER' or 'SUPPLIER'
   final String customerType; // 'REGISTERED_B2B' or 'UNREGISTERED_B2C'
+  final DateTime? lastTransactionDate;
 
   CustomerModel({
     required this.id,
@@ -21,17 +26,36 @@ class CustomerModel {
     this.billingAddress = '',
     this.shippingAddress = '',
     this.city = '',
-    required this.state,
+    this.state = 'Andhra Pradesh',
     this.stateCode = '',
     this.pincode = '',
     this.gstin = '',
     this.pan = '',
+    this.billingName = '',
+    this.openingBalance = 0.0,
+    this.balance = 0.0,
+    this.partyType = 'CUSTOMER',
     this.customerType = 'UNREGISTERED_B2C',
+    this.lastTransactionDate,
   });
 
   bool get isRegistered => customerType == 'REGISTERED_B2B' || gstin.trim().isNotEmpty;
+  bool get isReceivable => balance > 0;
+  bool get isPayable => balance < 0;
+  bool get isSettled => balance == 0;
 
   factory CustomerModel.fromJson(Map<String, dynamic> json) {
+    DateTime? lastTxDate;
+    if (json['lastTransactionDate'] != null) {
+      try {
+        lastTxDate = DateTime.parse(json['lastTransactionDate'].toString());
+      } catch (_) {}
+    } else if (json['updatedAt'] != null) {
+      try {
+        lastTxDate = DateTime.parse(json['updatedAt'].toString());
+      } catch (_) {}
+    }
+
     return CustomerModel(
       id: json['_id']?.toString() ?? json['id']?.toString() ?? '',
       name: json['name']?.toString() ?? '',
@@ -45,7 +69,12 @@ class CustomerModel {
       pincode: json['pincode']?.toString() ?? '',
       gstin: json['gstin']?.toString() ?? '',
       pan: json['pan']?.toString() ?? '',
+      billingName: json['billingName']?.toString() ?? json['name']?.toString() ?? '',
+      openingBalance: (json['openingBalance'] as num?)?.toDouble() ?? 0.0,
+      balance: (json['balance'] as num?)?.toDouble() ?? (json['openingBalance'] as num?)?.toDouble() ?? 0.0,
+      partyType: json['partyType']?.toString() ?? 'CUSTOMER',
       customerType: json['customerType']?.toString() ?? 'UNREGISTERED_B2C',
+      lastTransactionDate: lastTxDate,
     );
   }
 
@@ -62,6 +91,9 @@ class CustomerModel {
       'pincode': pincode,
       'gstin': gstin,
       'pan': pan,
+      'billingName': billingName.isNotEmpty ? billingName : name,
+      'openingBalance': openingBalance,
+      'partyType': partyType,
       'customerType': customerType,
     };
   }
@@ -79,7 +111,12 @@ class CustomerModel {
     String? pincode,
     String? gstin,
     String? pan,
+    String? billingName,
+    double? openingBalance,
+    double? balance,
+    String? partyType,
     String? customerType,
+    DateTime? lastTransactionDate,
   }) {
     return CustomerModel(
       id: id ?? this.id,
@@ -94,7 +131,12 @@ class CustomerModel {
       pincode: pincode ?? this.pincode,
       gstin: gstin ?? this.gstin,
       pan: pan ?? this.pan,
+      billingName: billingName ?? this.billingName,
+      openingBalance: openingBalance ?? this.openingBalance,
+      balance: balance ?? this.balance,
+      partyType: partyType ?? this.partyType,
       customerType: customerType ?? this.customerType,
+      lastTransactionDate: lastTransactionDate ?? this.lastTransactionDate,
     );
   }
 }

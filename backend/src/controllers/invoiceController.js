@@ -157,11 +157,31 @@ const createInvoice = async (req, res) => {
       return res.status(400).json({ success: false, message: 'At least one item is required' });
     }
 
-    // Fetch Customer
-    const customer = await Customer.findOne({
-      _id: customerId,
-      userId: req.user._id,
-    });
+    // Fetch or resolve Customer
+    let customer;
+    if (customerId) {
+      customer = await Customer.findOne({
+        _id: customerId,
+        userId: req.user._id,
+      });
+    }
+    
+    // If not found by ID, attempt lookup by name
+    if (!customer && req.body.customerName) {
+      customer = await Customer.findOne({
+        name: { $regex: new RegExp(`^${req.body.customerName.trim()}$`, 'i') },
+        userId: req.user._id,
+      });
+      if (!customer) {
+        customer = await Customer.create({
+          userId: req.user._id,
+          name: req.body.customerName.trim(),
+          phone: req.body.customerPhone || '',
+          state: req.body.customerState || 'Andhra Pradesh',
+          billingName: req.body.billingName || req.body.customerName.trim(),
+        });
+      }
+    }
 
     if (!customer) {
       return res.status(404).json({ success: false, message: 'Customer not found' });
@@ -203,6 +223,7 @@ const createInvoice = async (req, res) => {
     const grandTotal = calculated.grandTotal;
     const paid = Number(amountPaid) || 0;
     const balanceDue = Number(Math.max(0, grandTotal - paid).toFixed(2));
+    const excessAmount = paid > grandTotal ? Number((paid - grandTotal).toFixed(2)) : 0;
 
     let finalStatus = status;
     if (paid >= grandTotal && grandTotal > 0) {
@@ -263,8 +284,11 @@ const createInvoice = async (req, res) => {
       grandTotal: calculated.grandTotal,
       amountPaid: paid,
       balanceDue: balanceDue,
+      excessAmount: excessAmount,
+      paymentType: req.body.paymentType || 'Cash',
+      description: req.body.description || notes || '',
       status: finalStatus,
-      notes: notes || 'Thank you for your business!',
+      notes: notes || req.body.description || 'Thank you for your business!',
       termsAndConditions: termsAndConditions || business.termsAndConditions || '',
       amountInWords: amountInWords,
     });

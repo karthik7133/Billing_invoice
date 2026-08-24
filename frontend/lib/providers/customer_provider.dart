@@ -49,23 +49,57 @@ class CustomerProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  CustomerModel? getCustomerById(String id) {
+    try {
+      return _customers.firstWhere((c) => c.id == id);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  CustomerModel? findByName(String name) {
+    try {
+      final q = name.trim().toLowerCase();
+      return _customers.firstWhere((c) => c.name.trim().toLowerCase() == q);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<CustomerModel?> addCustomer(CustomerModel newCustomer) async {
     _isLoading = true;
     notifyListeners();
 
+    CustomerModel finalCustomer = newCustomer.id.isNotEmpty ? newCustomer : newCustomer.copyWith(id: _uuid.v4());
+
     final res = await _api.post(Endpoints.customers, newCustomer.toJson());
     _isLoading = false;
 
-    CustomerModel finalCustomer;
     if (res.success && res.data != null && res.data['customer'] != null) {
       finalCustomer = CustomerModel.fromJson(res.data['customer']);
-    } else {
-      finalCustomer = newCustomer.copyWith(id: _uuid.v4());
     }
 
-    _customers.insert(0, finalCustomer);
+    // Check if already in list
+    final existingIdx = _customers.indexWhere((c) => c.id == finalCustomer.id || c.name.toLowerCase() == finalCustomer.name.toLowerCase());
+    if (existingIdx != -1) {
+      _customers[existingIdx] = finalCustomer;
+    } else {
+      _customers.insert(0, finalCustomer);
+    }
     notifyListeners();
     return finalCustomer;
+  }
+
+  void updatePartyBalanceFromInvoice(String customerId, double newDueAmount) {
+    final index = _customers.indexWhere((c) => c.id == customerId);
+    if (index != -1) {
+      final current = _customers[index];
+      _customers[index] = current.copyWith(
+        balance: current.balance + newDueAmount,
+        lastTransactionDate: DateTime.now(),
+      );
+      notifyListeners();
+    }
   }
 
   Future<bool> updateCustomer(CustomerModel updated) async {

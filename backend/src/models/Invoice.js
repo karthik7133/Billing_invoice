@@ -202,6 +202,18 @@ const InvoiceSchema = new mongoose.Schema(
       enum: ['DRAFT', 'ISSUED', 'PAID', 'PARTIALLY_PAID', 'CANCELLED'],
       default: 'ISSUED',
     },
+    paymentType: {
+      type: String,
+      default: 'Cash',
+    },
+    description: {
+      type: String,
+      default: '',
+    },
+    excessAmount: {
+      type: Number,
+      default: 0,
+    },
     notes: {
       type: String,
       default: 'Thank you for your business!',

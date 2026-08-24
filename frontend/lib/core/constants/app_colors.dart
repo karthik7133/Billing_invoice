@@ -26,6 +26,21 @@ class AppColors {
   static const Color textMuted = Color(0xFF94A3B8); // Slate 400
   static const Color textInverse = Color(0xFFFFFFFF);
 
+  // Vyapar / Seafood Brand & Theme Colors
+  static const Color vyaparPink = Color(0xFFE51A4B); // Vibrant pink/crimson FAB & active pill
+  static const Color vyaparPinkLight = Color(0xFFFFF0F4);
+  static const Color vyaparBlue = Color(0xFF1E88E5);
+  static const Color vyaparBlueLight = Color(0xFFE8F1FC);
+  static const Color receivableGreen = Color(0xFF00A86B); // "You'll Get" green
+  static const Color receivableGreenLight = Color(0xFFE6F7F0);
+  static const Color payableRed = Color(0xFFE51A4B); // "You'll Give" red
+  static const Color payableRedLight = Color(0xFFFFECEF);
+  static const Color unpaidOrange = Color(0xFFF59E0B);
+  static const Color unpaidOrangeLight = Color(0xFFFEF3C7);
+  static const Color paidGreen = Color(0xFF10B981);
+  static const Color paidGreenLight = Color(0xFFD1FAE5);
+  static const Color backgroundSoft = Color(0xFFF4F7FB);
+
   // Status & Semantic Colors
   static const Color success = Color(0xFF10B981); // Emerald 500
   static const Color successBg = Color(0xFFECFDF5);
@@ -40,8 +55,8 @@ class AppColors {
   static const Color statusPaidText = Color(0xFF065F46);
   static const Color statusPaidBg = Color(0xFFD1FAE5);
 
-  static const Color statusUnpaidText = Color(0xFF991B1B);
-  static const Color statusUnpaidBg = Color(0xFFFEE2E2);
+  static const Color statusUnpaidText = Color(0xFFB45309);
+  static const Color statusUnpaidBg = Color(0xFFFEF3C7);
 
   static const Color statusPartialText = Color(0xFF92400E);
   static const Color statusPartialBg = Color(0xFFFEF3C7);

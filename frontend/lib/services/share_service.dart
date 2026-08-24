@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
 import '../models/invoice_model.dart';
@@ -18,5 +19,16 @@ class ShareService {
       bytes: pdfBytes,
       filename: 'Invoice_${invoice.invoiceNumber}.pdf',
     );
+  }
+
+  static Future<void> sharePdf(Uint8List bytes, {required String filename}) async {
+    await Printing.sharePdf(
+      bytes: bytes,
+      filename: filename,
+    );
+  }
+
+  static Future<void> shareText({required String text, String? subject}) async {
+    await Clipboard.setData(ClipboardData(text: text));
   }
 }

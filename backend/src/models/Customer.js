@@ -41,8 +41,8 @@ const CustomerSchema = new mongoose.Schema(
     },
     state: {
       type: String,
-      required: [true, 'Customer state is required for GST determination'],
       trim: true,
+      default: 'Andhra Pradesh',
     },
     stateCode: {
       type: String,
@@ -65,6 +65,20 @@ const CustomerSchema = new mongoose.Schema(
       trim: true,
       uppercase: true,
       default: '',
+    },
+    billingName: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    openingBalance: {
+      type: Number,
+      default: 0,
+    },
+    partyType: {
+      type: String,
+      enum: ['CUSTOMER', 'SUPPLIER'],
+      default: 'CUSTOMER',
     },
     customerType: {
       type: String,

@@ -346,8 +346,52 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                   const Divider(height: 14),
                   _buildDetailRow('Grand Total', CurrencyFormatter.format(_invoice.grandTotal), isBold: true),
                   if (_invoice.amountPaid > 0) ...[
-                    _buildDetailRow('Paid Amount', CurrencyFormatter.format(_invoice.amountPaid), isGreen: true),
-                    _buildDetailRow('Balance Due', CurrencyFormatter.format(_invoice.balanceDue), isRed: true, isBold: true),
+                    _buildDetailRow('Received / Paid', CurrencyFormatter.format(_invoice.amountPaid), isGreen: true),
+                    _buildDetailRow('Balance Due', CurrencyFormatter.format(_invoice.balanceDue), isRed: _invoice.balanceDue > 0, isGreen: _invoice.balanceDue <= 0, isBold: true),
+                  ],
+                  if (_invoice.hasOverMoney) ...[
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEFF6FF),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: const Color(0xFFBFDBFE)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Extra / Over Money (Advance):',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF1E3A8A)),
+                          ),
+                          Text(
+                            CurrencyFormatter.format(_invoice.overMoneyAmount),
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Color(0xFF2563EB)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  if (_invoice.description.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Description / Notes:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+                          const SizedBox(height: 2),
+                          Text(_invoice.description, style: const TextStyle(fontSize: 12, color: Color(0xFF1E293B))),
+                        ],
+                      ),
+                    ),
                   ],
                   const SizedBox(height: 8),
                   Text(
