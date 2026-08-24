@@ -1,6 +1,9 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/gst_rates.dart';
 import '../../core/utils/currency_formatter.dart';
@@ -9,7 +12,6 @@ import '../../models/invoice_model.dart';
 import '../../providers/business_provider.dart';
 import '../../providers/customer_provider.dart';
 import '../../providers/invoice_provider.dart';
-import '../../services/share_service.dart';
 import 'invoice_detail_screen.dart';
 
 class CreateInvoiceScreen extends StatefulWidget {
@@ -80,11 +82,13 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
 
   late DateTime _invoiceDate;
   String _paymentType = 'Cash';
-  bool _isReceivedChecked = true;
+  bool _isReceivedChecked = false;
   bool _termsExpanded = false;
   String _termsAndConditions = '';
 
   final List<_SaleItemDraft> _items = [];
+  final List<XFile> _attachedImages = [];
+  final ImagePicker _imagePicker = ImagePicker();
 
   @override
   void initState() {
@@ -96,27 +100,18 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
 
     final defaultInvoiceNo = widget.existingInvoice != null
         ? widget.existingInvoice!.invoiceNumber
-        : '${business.nextInvoiceNumber > 0 ? business.nextInvoiceNumber : 31}';
+        : '${business.nextInvoiceNumber > 0 ? business.nextInvoiceNumber : 1}';
 
     _invoiceNoController = TextEditingController(text: defaultInvoiceNo);
-    _descriptionController = TextEditingController(text: widget.existingInvoice?.description ?? 'PARTY EXPENSES NILL\nRAILWAY EXPENSES');
+    _descriptionController = TextEditingController(text: widget.existingInvoice?.description ?? '');
     _termsAndConditions = widget.existingInvoice?.termsAndConditions ?? business.termsAndConditions;
 
-    final customerProvider = Provider.of<CustomerProvider>(context, listen: false);
-    if (widget.preselectedCustomer != null) {
-      _selectedCustomer = widget.preselectedCustomer;
-    } else if (widget.existingInvoice != null) {
-      _selectedCustomer = widget.existingInvoice!.customerSnapshot;
-    } else if (customerProvider.customers.isNotEmpty) {
-      _selectedCustomer = customerProvider.customers.first;
-    }
-
-    _customerNameController = TextEditingController(text: _selectedCustomer?.name ?? 'SVSF/TN');
-    _billingNameController = TextEditingController(text: _selectedCustomer?.billingName.isNotEmpty == true ? _selectedCustomer!.billingName : (_selectedCustomer?.name ?? 'SVSF/TN'));
-    _phoneController = TextEditingController(text: _selectedCustomer?.phone ?? '');
-
-    // Pre-populate items
     if (widget.existingInvoice != null) {
+      _selectedCustomer = widget.existingInvoice!.customerSnapshot;
+      _customerNameController = TextEditingController(text: _selectedCustomer?.name ?? '');
+      _billingNameController = TextEditingController(text: _selectedCustomer?.billingName ?? '');
+      _phoneController = TextEditingController(text: _selectedCustomer?.phone ?? '');
+
       for (final it in widget.existingInvoice!.items) {
         _items.add(
           _SaleItemDraft(
@@ -133,33 +128,26 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
           ),
         );
       }
-      _receivedAmountController = TextEditingController(text: widget.existingInvoice!.amountPaid.toStringAsFixed(2));
+      _receivedAmountController = TextEditingController(
+        text: widget.existingInvoice!.amountPaid > 0 ? widget.existingInvoice!.amountPaid.toStringAsFixed(2) : '',
+      );
       _isReceivedChecked = widget.existingInvoice!.amountPaid > 0;
       _paymentType = widget.existingInvoice!.paymentType.isNotEmpty ? widget.existingInvoice!.paymentType : 'Cash';
+    } else if (widget.preselectedCustomer != null) {
+      _selectedCustomer = widget.preselectedCustomer;
+      _customerNameController = TextEditingController(text: _selectedCustomer!.name);
+      _billingNameController = TextEditingController(
+        text: _selectedCustomer!.billingName.isNotEmpty ? _selectedCustomer!.billingName : _selectedCustomer!.name,
+      );
+      _phoneController = TextEditingController(text: _selectedCustomer!.phone);
+      _receivedAmountController = TextEditingController(text: '');
     } else {
-      // Default initial sample item matching user's photo
-      _items.add(
-        _SaleItemDraft(
-          name: 'BLUE COOKED CRAB',
-          unit: 'Kg',
-          quantity: 3,
-          rate: 650,
-          discount: 0,
-          gstRate: 0,
-        ),
-      );
-      _items.add(
-        _SaleItemDraft(
-          name: '3SPT COOKED RAW WT',
-          unit: 'Kg',
-          quantity: 987,
-          rate: 340,
-          discount: 0,
-          gstRate: 0,
-        ),
-      );
-      final total = _computeTotal();
-      _receivedAmountController = TextEditingController(text: total.toStringAsFixed(2));
+      // Clean, dynamic state with no dummy/static text
+      _selectedCustomer = null;
+      _customerNameController = TextEditingController(text: '');
+      _billingNameController = TextEditingController(text: '');
+      _phoneController = TextEditingController(text: '');
+      _receivedAmountController = TextEditingController(text: '');
     }
   }
 
@@ -195,6 +183,133 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     });
   }
 
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: source,
+        imageQuality: 85,
+        maxWidth: 1600,
+      );
+      if (picked != null) {
+        setState(() {
+          _attachedImages.add(picked);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to pick image: $e'), backgroundColor: AppColors.error),
+        );
+      }
+    }
+  }
+
+  void _showImageSourceSheet() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Add Photo / Receipt',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
+              ),
+              const SizedBox(height: 14),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Color(0xFFEFF6FF),
+                  child: Icon(Icons.camera_alt_outlined, color: Color(0xFF2563EB)),
+                ),
+                title: const Text('Take Photo (Camera)'),
+                subtitle: const Text('Capture invoice, bill or delivery receipt'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickImage(ImageSource.camera);
+                },
+              ),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Color(0xFFEFF6FF),
+                  child: Icon(Icons.photo_library_outlined, color: Color(0xFF2563EB)),
+                ),
+                title: const Text('Choose from Gallery'),
+                subtitle: const Text('Upload an existing photo from device'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickImage(ImageSource.gallery);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showImagePreviewDialog(XFile file, int index) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                  child: kIsWeb
+                      ? Image.network(file.path, fit: BoxFit.contain, height: 320)
+                      : Image.file(File(file.path), fit: BoxFit.contain, height: 320),
+                ),
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: CircleAvatar(
+                    backgroundColor: Colors.black54,
+                    radius: 16,
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      icon: const Icon(Icons.close, color: Colors.white, size: 18),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Photo #${index + 1}',
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                  ),
+                  TextButton.icon(
+                    style: TextButton.styleFrom(foregroundColor: AppColors.error),
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    label: const Text('Remove'),
+                    onPressed: () {
+                      setState(() => _attachedImages.removeAt(index));
+                      Navigator.pop(ctx);
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _saveSale() async {
     final name = _customerNameController.text.trim();
     if (name.isEmpty) {
@@ -219,7 +334,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     if (_selectedCustomer != null && _selectedCustomer!.name.toLowerCase() == name.toLowerCase()) {
       customer = _selectedCustomer!;
     } else {
-      // Find or create customer
+      // Find or create customer dynamically
       final existing = custProvider.findByName(name);
       if (existing != null) {
         customer = existing;
@@ -251,7 +366,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
       termsAndConditions: _termsAndConditions,
     );
 
-    // Refresh customers so balance is updated in Party Details
+    // Refresh customers so balance is updated dynamically
     await custProvider.fetchCustomers();
 
     if (mounted) {
@@ -278,7 +393,8 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     final overMoney = amountPaid > grandTotal ? amountPaid - grandTotal : 0.0;
 
     final customerProvider = Provider.of<CustomerProvider>(context);
-    final partyBalance = _selectedCustomer?.balance ?? 1248732.0;
+    final hasSelectedCustomer = _selectedCustomer != null;
+    final partyBalance = _selectedCustomer?.balance ?? 0.0;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7FB),
@@ -286,28 +402,31 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
         backgroundColor: Colors.white,
         elevation: 0.5,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black87),
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF1E293B)),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text(
           'Sale',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.black87),
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.share_outlined, color: Colors.black87),
-            onPressed: () async {
-              // Share draft text
-              ShareService.shareText(
-                text: 'Sale Draft for ${_customerNameController.text}: Total ${CurrencyFormatter.format(grandTotal)}',
-                subject: 'Sale Estimate',
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings_outlined, color: Colors.black87),
-            onPressed: () {},
-          ),
+          if (_items.isNotEmpty || _customerNameController.text.isNotEmpty)
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _items.clear();
+                  _customerNameController.clear();
+                  _billingNameController.clear();
+                  _phoneController.clear();
+                  _descriptionController.clear();
+                  _receivedAmountController.clear();
+                  _attachedImages.clear();
+                  _selectedCustomer = null;
+                });
+              },
+              child: const Text('Clear', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+            ),
+          const SizedBox(width: 8),
         ],
       ),
       body: SingleChildScrollView(
@@ -315,7 +434,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. Invoice No & Date Row (Image 4)
+            // 1. Invoice No & Date Row
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
@@ -344,7 +463,6 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                             ),
                           ),
                         ),
-                        const Icon(Icons.keyboard_arrow_down, color: Color(0xFF64748B), size: 18),
                       ],
                     ),
                   ),
@@ -378,7 +496,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                               ),
                             ],
                           ),
-                          const Icon(Icons.keyboard_arrow_down, color: Color(0xFF64748B), size: 18),
+                          const Icon(Icons.calendar_today_outlined, color: Color(0xFF2563EB), size: 16),
                         ],
                       ),
                     ),
@@ -389,7 +507,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
 
             const SizedBox(height: 12),
 
-            // 2. Customer Section (Customer Name *, Billing Name, Phone) (Image 4)
+            // 2. Customer Section (Customer Name *, Billing Name, Phone)
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -400,7 +518,6 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Customer Name with floating party balance & dropdown picker
                   Stack(
                     alignment: Alignment.topRight,
                     children: [
@@ -414,6 +531,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                                 style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
                                 decoration: InputDecoration(
                                   labelText: 'Customer Name *',
+                                  hintText: 'Enter customer or select party',
                                   labelStyle: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
                                   border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(8),
@@ -423,13 +541,14 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                                 ),
                                 onChanged: (val) {
                                   final match = customerProvider.findByName(val);
-                                  if (match != null) {
-                                    _onCustomerSelected(match);
-                                  }
+                                  setState(() {
+                                    _selectedCustomer = match;
+                                  });
                                 },
                               ),
                             ),
-                            if (customerProvider.customers.isNotEmpty)
+                            if (customerProvider.customers.isNotEmpty) ...[
+                              const SizedBox(width: 4),
                               PopupMenuButton<CustomerModel>(
                                 icon: const Icon(Icons.arrow_drop_down_circle_outlined, color: Color(0xFF2563EB)),
                                 tooltip: 'Select Existing Party',
@@ -441,6 +560,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
                                         Text(c.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                                        const SizedBox(width: 8),
                                         Text(
                                           CurrencyFormatter.format(c.balance),
                                           style: const TextStyle(fontSize: 12, color: AppColors.receivableGreen),
@@ -450,25 +570,27 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                                   );
                                 }).toList(),
                               ),
+                            ],
                           ],
                         ),
                       ),
-                      Positioned(
-                        top: 0,
-                        right: 12,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                          color: Colors.white,
-                          child: Text(
-                            'Party Balance: ${CurrencyFormatter.format(partyBalance)}',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.receivableGreen,
+                      if (hasSelectedCustomer)
+                        Positioned(
+                          top: 0,
+                          right: 12,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                            color: Colors.white,
+                            child: Text(
+                              'Party Balance: ${CurrencyFormatter.format(partyBalance)}',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.receivableGreen,
+                              ),
                             ),
                           ),
                         ),
-                      ),
                     ],
                   ),
 
@@ -479,7 +601,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                     controller: _billingNameController,
                     style: const TextStyle(fontSize: 14, color: Color(0xFF1E293B)),
                     decoration: InputDecoration(
-                      labelText: 'Billing Name(Optional)',
+                      labelText: 'Billing Name (Optional)',
                       labelStyle: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
@@ -512,7 +634,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
 
             const SizedBox(height: 14),
 
-            // 3. Billed Items Header Banner (Image 4)
+            // 3. Billed Items Header Banner
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -520,56 +642,91 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                 color: const Color(0xFFBFDBFE),
                 borderRadius: BorderRadius.circular(6),
               ),
-              child: const Row(
-                children: [
-                  Icon(Icons.check_circle, size: 16, color: Color(0xFF1E88E5)),
-                  SizedBox(width: 6),
-                  Text(
-                    'Billed Items',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF1E3A8A)),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 8),
-
-            // 4. Item Cards List (Image 4)
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _items.length,
-              separatorBuilder: (context, index) => const SizedBox(height: 10),
-              itemBuilder: (ctx, index) {
-                final item = _items[index];
-                return _buildItemCard(item, index);
-              },
-            ),
-
-            const SizedBox(height: 8),
-
-            // Total Disc & Tax Bar
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Total Disc: ${totalDiscount.toStringAsFixed(2)}',
-                    style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                  const Row(
+                    children: [
+                      Icon(Icons.check_circle, size: 16, color: Color(0xFF1E88E5)),
+                      SizedBox(width: 6),
+                      Text(
+                        'Billed Items',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF1E3A8A)),
+                      ),
+                    ],
                   ),
                   Text(
-                    'Total Tax Amt: ${totalTax.toStringAsFixed(2)}',
-                    style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                    '${_items.length} ${_items.length == 1 ? "Item" : "Items"}',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF1E3A8A)),
                   ),
                 ],
               ),
             ),
+
+            const SizedBox(height: 8),
+
+            // 4. Item Cards List
+            if (_items.isEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: Column(
+                  children: [
+                    Icon(Icons.inventory_2_outlined, size: 36, color: Colors.grey.shade400),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'No Items Added',
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF64748B)),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Tap below to add items, quantity, and rate to this sale',
+                      style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              )
+            else ...[
+              ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _items.length,
+                separatorBuilder: (context, index) => const SizedBox(height: 10),
+                itemBuilder: (ctx, index) {
+                  final item = _items[index];
+                  return _buildItemCard(item, index);
+                },
+              ),
+              const SizedBox(height: 8),
+              // Total Disc & Tax Bar
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Total Disc: ${CurrencyFormatter.format(totalDiscount)}',
+                      style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                    ),
+                    Text(
+                      'Total Tax: ${CurrencyFormatter.format(totalTax)}',
+                      style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
 
             const SizedBox(height: 10),
 
@@ -591,7 +748,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
 
             const SizedBox(height: 14),
 
-            // 5. Totals & Payment Section (Image 5)
+            // 5. Totals & Payment Section
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -610,7 +767,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                         style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
                       ),
                       Text(
-                        '₹ ${grandTotal.toStringAsFixed(2)}',
+                        CurrencyFormatter.format(grandTotal),
                         style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
                       ),
                     ],
@@ -626,9 +783,9 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                         activeColor: const Color(0xFF1E88E5),
                         onChanged: (val) {
                           setState(() {
-                            _isReceivedChecked = val ?? true;
+                            _isReceivedChecked = val ?? false;
                             if (_isReceivedChecked && _receivedAmountController.text.isEmpty) {
-                              _receivedAmountController.text = grandTotal.toStringAsFixed(2);
+                              _receivedAmountController.text = grandTotal > 0 ? grandTotal.toStringAsFixed(2) : '';
                             }
                           });
                         },
@@ -648,6 +805,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                           textAlign: TextAlign.right,
                           style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
                           decoration: const InputDecoration(
+                            hintText: '0.00',
                             isDense: true,
                             border: UnderlineInputBorder(),
                             contentPadding: EdgeInsets.symmetric(vertical: 4),
@@ -669,13 +827,13 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                         style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.receivableGreen),
                       ),
                       Text(
-                        '₹ ${balanceDue.toStringAsFixed(2)}',
+                        CurrencyFormatter.format(balanceDue),
                         style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.receivableGreen),
                       ),
                     ],
                   ),
 
-                  // ── Extra Over Money Banner ──
+                  // Extra Over Money Banner
                   if (overMoney > 0) ...[
                     const SizedBox(height: 10),
                     Container(
@@ -699,7 +857,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                             ],
                           ),
                           Text(
-                            '₹ ${overMoney.toStringAsFixed(2)}',
+                            CurrencyFormatter.format(overMoney),
                             style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF2563EB)),
                           ),
                         ],
@@ -711,7 +869,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                   const Divider(height: 1, color: Color(0xFFF1F5F9)),
                   const SizedBox(height: 12),
 
-                  // Payment Type Selector (Image 5)
+                  // Payment Type Selector
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -746,7 +904,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
 
             const SizedBox(height: 14),
 
-            // 6. Description & Attachment (Image 5)
+            // 6. Description & Dynamic Image / Photo Attachment
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -755,6 +913,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                 border: Border.all(color: const Color(0xFFE2E8F0)),
               ),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -765,7 +924,8 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                           maxLines: 3,
                           style: const TextStyle(fontSize: 13, color: Color(0xFF1E293B)),
                           decoration: InputDecoration(
-                            labelText: 'Description',
+                            labelText: 'Description / Notes',
+                            hintText: 'Add remarks, payment notes, transport details...',
                             labelStyle: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
@@ -775,43 +935,93 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                         ),
                       ),
                       const SizedBox(width: 10),
-                      Container(
-                        width: 70,
-                        height: 70,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: const Color(0xFFCBD5E1)),
-                        ),
-                        child: const Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.add_photo_alternate_outlined, color: Color(0xFF2563EB), size: 24),
-                            SizedBox(height: 2),
-                            Text('Image', style: TextStyle(fontSize: 10, color: Color(0xFF64748B))),
-                          ],
+                      // Real interactive Image picker card
+                      InkWell(
+                        onTap: _showImageSourceSheet,
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          width: 76,
+                          height: 76,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFF2563EB).withValues(alpha: 0.4)),
+                          ),
+                          child: const Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.add_a_photo_outlined, color: Color(0xFF2563EB), size: 22),
+                              SizedBox(height: 3),
+                              Text('Add Photo', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF2563EB))),
+                            ],
+                          ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
-                  OutlinedButton.icon(
-                    onPressed: () {},
-                    icon: const Icon(Icons.description_outlined, size: 16, color: Color(0xFF64748B)),
-                    label: const Text('Add Document', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 38),
-                      side: const BorderSide(color: Color(0xFFE2E8F0)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+
+                  // Display Attached Images Gallery
+                  if (_attachedImages.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    const Text('Attached Photos & Receipts:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 74,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _attachedImages.length,
+                        separatorBuilder: (context, index) => const SizedBox(width: 10),
+                        itemBuilder: (ctx, idx) {
+                          final img = _attachedImages[idx];
+                          return Stack(
+                            children: [
+                              GestureDetector(
+                                onTap: () => _showImagePreviewDialog(img, idx),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    width: 74,
+                                    height: 74,
+                                    decoration: BoxDecoration(
+                                      border: Border.all(color: const Color(0xFFCBD5E1)),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: kIsWeb
+                                        ? Image.network(img.path, fit: BoxFit.cover)
+                                        : Image.file(File(img.path), fit: BoxFit.cover),
+                                  ),
+                                ),
+                              ),
+                              Positioned(
+                                top: 2,
+                                right: 2,
+                                child: GestureDetector(
+                                  onTap: () {
+                                    setState(() => _attachedImages.removeAt(idx));
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.all(2),
+                                    decoration: const BoxDecoration(
+                                      color: Colors.redAccent,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(Icons.close, color: Colors.white, size: 12),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
 
             const SizedBox(height: 12),
 
-            // 7. Terms & Conditions Accordion (Image 5)
+            // 7. Terms & Conditions Accordion
             Container(
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -848,7 +1058,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
         ),
       ),
 
-      // 8. Bottom Bar: Delete | Save | 3 dots (Image 5)
+      // 8. Bottom Bar: Delete | Save (Blue button)
       bottomNavigationBar: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
@@ -868,7 +1078,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
                 child: const Text(
-                  'Delete',
+                  'Cancel',
                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
                 ),
               ),
@@ -884,18 +1094,10 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                     elevation: 2,
                   ),
                   child: const Text(
-                    'Save',
+                    'Save Sale',
                     style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert, color: Color(0xFF64748B)),
-                onSelected: (val) {},
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'preview', child: Text('Preview PDF')),
-                ],
               ),
             ],
           ),
@@ -940,7 +1142,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                 ],
               ),
               Text(
-                '₹ ${item.total.toStringAsFixed(0)}',
+                CurrencyFormatter.format(item.total),
                 style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
               ),
             ],
@@ -952,41 +1154,43 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
             children: [
               const Text('Item Subtotal', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
               Text(
-                '${item.quantity.toStringAsFixed(item.quantity.truncateToDouble() == item.quantity ? 0 : 2)} ${item.unit} x ${item.rate.toStringAsFixed(0)} = ₹ ${item.subtotal.toStringAsFixed(0)}',
+                '${item.quantity.toStringAsFixed(item.quantity.truncateToDouble() == item.quantity ? 0 : 2)} ${item.unit} x ${CurrencyFormatter.format(item.rate)} = ${CurrencyFormatter.format(item.subtotal)}',
                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF475569)),
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          // Discount
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Discount (${item.discountType == "PERCENT" ? "%" : "₹"}): ${item.discount.toStringAsFixed(0)}',
-                style: const TextStyle(fontSize: 11, color: Color(0xFFE59819)),
-              ),
-              Text(
-                '₹ ${item.discountAmount.toStringAsFixed(0)}',
-                style: const TextStyle(fontSize: 11, color: Color(0xFFE59819)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          // Tax
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Tax : ${item.gstRate.toStringAsFixed(0)}%',
-                style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
-              ),
-              Text(
-                '₹ ${item.taxAmount.toStringAsFixed(0)}',
-                style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
-              ),
-            ],
-          ),
+          if (item.discount > 0) ...[
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Discount (${item.discountType == "PERCENT" ? "%" : "₹"}): ${item.discount.toStringAsFixed(0)}',
+                  style: const TextStyle(fontSize: 11, color: Color(0xFFE59819)),
+                ),
+                Text(
+                  '- ${CurrencyFormatter.format(item.discountAmount)}',
+                  style: const TextStyle(fontSize: 11, color: Color(0xFFE59819)),
+                ),
+              ],
+            ),
+          ],
+          if (item.gstRate > 0) ...[
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Tax : ${item.gstRate.toStringAsFixed(0)}%',
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                ),
+                Text(
+                  CurrencyFormatter.format(item.taxAmount),
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 8),
           const Divider(height: 1, color: Color(0xFFF1F5F9)),
           const SizedBox(height: 6),
@@ -1028,10 +1232,14 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
 
   void _showEditItemDialog(_SaleItemDraft draft, int index) {
     final nameCtrl = TextEditingController(text: draft.name);
-    final qtyCtrl = TextEditingController(text: draft.quantity.toStringAsFixed(draft.quantity.truncateToDouble() == draft.quantity ? 0 : 2));
-    final rateCtrl = TextEditingController(text: draft.rate.toStringAsFixed(draft.rate.truncateToDouble() == draft.rate ? 0 : 2));
+    final qtyCtrl = TextEditingController(
+      text: draft.quantity > 0 ? draft.quantity.toStringAsFixed(draft.quantity.truncateToDouble() == draft.quantity ? 0 : 2) : '1',
+    );
+    final rateCtrl = TextEditingController(
+      text: draft.rate > 0 ? draft.rate.toStringAsFixed(draft.rate.truncateToDouble() == draft.rate ? 0 : 2) : '',
+    );
     final unitCtrl = TextEditingController(text: draft.unit);
-    final discCtrl = TextEditingController(text: draft.discount.toStringAsFixed(0));
+    final discCtrl = TextEditingController(text: draft.discount > 0 ? draft.discount.toStringAsFixed(0) : '0');
     double selectedGst = draft.gstRate;
 
     showModalBottomSheet(
@@ -1060,7 +1268,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
               TextField(
                 controller: nameCtrl,
                 autofocus: index == -1,
-                decoration: const InputDecoration(labelText: 'Item Name *', border: OutlineInputBorder()),
+                decoration: const InputDecoration(labelText: 'Item Name *', hintText: 'e.g. Fish, Crab, Service...', border: OutlineInputBorder()),
               ),
               const SizedBox(height: 12),
               Row(
@@ -1085,7 +1293,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                     child: TextField(
                       controller: rateCtrl,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(labelText: 'Rate (₹)', border: OutlineInputBorder()),
+                      decoration: const InputDecoration(labelText: 'Rate (₹)', hintText: '0.00', border: OutlineInputBorder()),
                     ),
                   ),
                 ],

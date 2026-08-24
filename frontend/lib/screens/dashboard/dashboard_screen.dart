@@ -15,6 +15,7 @@ import '../customers/add_edit_customer_screen.dart';
 import '../customers/party_details_screen.dart';
 import '../invoices/create_invoice_screen.dart';
 import '../invoices/invoice_detail_screen.dart';
+import '../invoices/invoice_history_screen.dart';
 import '../invoices/invoice_pdf_preview_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -135,16 +136,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       actions: [
         IconButton(
-          icon: const Icon(Icons.shield_outlined, color: Color(0xFF64748B), size: 22),
-          tooltip: 'Security Status',
-          onPressed: () {},
-        ),
-        IconButton(
-          icon: const Icon(Icons.notifications_none_rounded, color: Color(0xFF64748B), size: 22),
-          tooltip: 'Notifications',
-          onPressed: () {},
-        ),
-        IconButton(
           icon: const Icon(Icons.settings_outlined, color: Color(0xFF64748B), size: 22),
           tooltip: 'Settings / Business Profile',
           onPressed: () {
@@ -153,7 +144,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             );
           },
         ),
-        const SizedBox(width: 4),
+        const SizedBox(width: 8),
       ],
     );
   }
@@ -239,7 +230,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // ─── 3. Quick Links Row (Images 1 & 2) ─────────────────────────────────────────
+  // ─── 3. Quick Links Row ────────────────────────────────────────────────────────
   Widget _buildQuickLinksRow() {
     return Container(
       color: Colors.white,
@@ -257,32 +248,52 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: _selectedTab == 1
                 ? [
                     _buildQuickLinkItem(
-                      icon: Icons.hub_outlined,
+                      icon: Icons.people_outline_rounded,
                       iconBg: const Color(0xFFEFF6FF),
                       iconColor: const Color(0xFF2563EB),
-                      label: 'Network',
-                      onTap: () {},
+                      label: 'All Parties',
+                      onTap: () {
+                        setState(() {
+                          _searchController.clear();
+                          _searchQuery = '';
+                        });
+                      },
                     ),
                     _buildQuickLinkItem(
-                      icon: Icons.receipt_long_outlined,
-                      iconBg: const Color(0xFFE8F1FC),
-                      iconColor: const Color(0xFF0284C7),
-                      label: 'Party State...',
-                      onTap: () {},
+                      icon: Icons.person_add_alt_1_outlined,
+                      iconBg: const Color(0xFFFFECEF),
+                      iconColor: AppColors.vyaparPink,
+                      label: 'New Party',
+                      onTap: () async {
+                        final created = await Navigator.of(context).push<CustomerModel>(
+                          MaterialPageRoute(builder: (ctx) => const AddEditCustomerScreen()),
+                        );
+                        if (mounted && created != null) {
+                          Provider.of<CustomerProvider>(context, listen: false).fetchCustomers();
+                        }
+                      },
                     ),
                     _buildQuickLinkItem(
                       icon: Icons.settings_outlined,
                       iconBg: const Color(0xFFF1F5F9),
                       iconColor: const Color(0xFF475569),
-                      label: 'Party Settings',
-                      onTap: () {},
+                      label: 'Settings',
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const BusinessProfileScreen()),
+                        );
+                      },
                     ),
                     _buildQuickLinkItem(
-                      icon: Icons.arrow_forward_ios_rounded,
+                      icon: Icons.receipt_long_outlined,
                       iconBg: const Color(0xFFEFF6FF),
                       iconColor: const Color(0xFF3B82F6),
-                      label: 'Show All',
-                      onTap: () {},
+                      label: 'Sales Report',
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const InvoiceHistoryScreen()),
+                        );
+                      },
                     ),
                   ]
                 : [
@@ -302,21 +313,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       iconBg: const Color(0xFFE8F1FC),
                       iconColor: const Color(0xFF0284C7),
                       label: 'Sale Report',
-                      onTap: () {},
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const InvoiceHistoryScreen()),
+                        );
+                      },
                     ),
                     _buildQuickLinkItem(
                       icon: Icons.settings_outlined,
                       iconBg: const Color(0xFFF1F5F9),
                       iconColor: const Color(0xFF475569),
                       label: 'Txn Settings',
-                      onTap: () {},
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const BusinessProfileScreen()),
+                        );
+                      },
                     ),
                     _buildQuickLinkItem(
-                      icon: Icons.arrow_forward_ios_rounded,
+                      icon: Icons.history_rounded,
                       iconBg: const Color(0xFFEFF6FF),
                       iconColor: const Color(0xFF3B82F6),
-                      label: 'Show All',
-                      onTap: () {},
+                      label: 'History',
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const InvoiceHistoryScreen()),
+                        );
+                      },
                     ),
                   ],
           ),
@@ -364,7 +387,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // ─── 4. Search & Filter Bar ───────────────────────────────────────────────────
   Widget _buildSearchBar() {
-    final hint = _selectedTab == 1 ? 'Search any party' : 'Search for a transaction';
+    final hint = _selectedTab == 1 ? 'Search party by name or phone...' : 'Search transaction by #no or customer...';
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       child: Container(
@@ -399,15 +422,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   _searchController.clear();
                   setState(() => _searchQuery = '');
                 },
-              ),
-            IconButton(
-              icon: const Icon(Icons.filter_alt_outlined, color: Color(0xFF2563EB), size: 20),
-              onPressed: () {},
-            ),
-            if (_selectedTab == 1)
-              IconButton(
-                icon: const Icon(Icons.more_vert, color: Color(0xFF64748B), size: 20),
-                onPressed: () {},
               ),
           ],
         ),
