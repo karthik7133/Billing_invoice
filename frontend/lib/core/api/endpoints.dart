@@ -1,6 +1,6 @@
 class Endpoints {
-  // Use localhost / 10.0.2.2 (for Android emulator) or web
-  static const String baseUrl = 'http://localhost:5000/api';
+  // Production backend on Render
+  static const String baseUrl = 'https://billing-invoice-rpt0.onrender.com/api';
 
   // Auth
   static const String register = '$baseUrl/auth/register';
