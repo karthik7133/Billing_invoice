@@ -25,10 +25,13 @@ class AuthProvider with ChangeNotifier {
   /// Does NOT make a network call — trusts the stored token immediately.
   /// Token will be naturally validated on the first real API call.
   Future<void> checkAuthStatus() async {
+    debugPrint('[AuthProvider] checkAuthStatus starting...');
     await _api.init();
     if (_api.token != null && _api.token!.isNotEmpty) {
+      debugPrint('[AuthProvider] Found saved token, authenticating user');
       _isAuthenticated = true;
     } else {
+      debugPrint('[AuthProvider] No saved token found');
       _isAuthenticated = false;
     }
     _hasCheckedAuth = true;
@@ -44,6 +47,7 @@ class AuthProvider with ChangeNotifier {
     String? state,
     String? gstin,
   }) async {
+    debugPrint('[AuthProvider] register() called for email: $email, name: $name');
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
@@ -61,6 +65,7 @@ class AuthProvider with ChangeNotifier {
     _isLoading = false;
 
     if (res.success && res.data != null && res.data['token'] != null) {
+      debugPrint('[AuthProvider] Registration SUCCESS! Token received.');
       _api.setToken(res.data['token']);
       _user = UserModel.fromJson(res.data['user']);
       if (res.data['business'] != null) {
@@ -71,6 +76,7 @@ class AuthProvider with ChangeNotifier {
       notifyListeners();
       return true;
     } else {
+      debugPrint('[AuthProvider] Registration FAILED: ${res.message}');
       _errorMessage = res.message ?? 'Registration failed. Please check your details and try again.';
       _isAuthenticated = false;
       notifyListeners();
@@ -79,6 +85,7 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<bool> login({required String email, required String password}) async {
+    debugPrint('[AuthProvider] login() called for email: $email');
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
@@ -91,6 +98,7 @@ class AuthProvider with ChangeNotifier {
     _isLoading = false;
 
     if (res.success && res.data != null && res.data['token'] != null) {
+      debugPrint('[AuthProvider] Login SUCCESS! Token received.');
       _api.setToken(res.data['token']);
       _user = UserModel.fromJson(res.data['user']);
       if (res.data['business'] != null) {
@@ -101,6 +109,7 @@ class AuthProvider with ChangeNotifier {
       notifyListeners();
       return true;
     } else {
+      debugPrint('[AuthProvider] Login FAILED: ${res.message}');
       _errorMessage = res.message ?? 'Invalid email or password.';
       _isAuthenticated = false;
       notifyListeners();
@@ -110,6 +119,7 @@ class AuthProvider with ChangeNotifier {
 
   /// Demo mode — no account needed, local-only data
   void loginAsDemo() {
+    debugPrint('[AuthProvider] Entering Demo Mode');
     _user = UserModel(
       id: 'user_demo',
       name: 'Demo User',
@@ -122,6 +132,7 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<void> fetchMe() async {
+    debugPrint('[AuthProvider] fetchMe() called');
     final res = await _api.get(Endpoints.me);
     if (res.success && res.data != null) {
       if (res.data['user'] != null) {
@@ -135,6 +146,7 @@ class AuthProvider with ChangeNotifier {
   }
 
   void logout() {
+    debugPrint('[AuthProvider] logout() called');
     _api.setToken(null);
     _user = null;
     _business = null;

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -20,6 +21,7 @@ class ApiClient {
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     _token = prefs.getString('auth_token');
+    debugPrint('[ApiClient] Initialized with token: ${_token != null ? "Present (${_token!.substring(0, _token!.length > 10 ? 10 : _token!.length)}...)" : "None"}');
   }
 
   void setToken(String? token) async {
@@ -27,8 +29,10 @@ class ApiClient {
     final prefs = await SharedPreferences.getInstance();
     if (token != null) {
       await prefs.setString('auth_token', token);
+      debugPrint('[ApiClient] Saved auth token');
     } else {
       await prefs.remove('auth_token');
+      debugPrint('[ApiClient] Cleared auth token');
     }
   }
 
@@ -46,10 +50,14 @@ class ApiClient {
   }
 
   Future<ApiResponse> get(String url) async {
+    debugPrint('[API GET] Request -> $url');
     try {
       final response = await http
           .get(Uri.parse(url), headers: _getHeaders())
           .timeout(const Duration(seconds: 30));
+
+      debugPrint('[API GET] Response (${response.statusCode}) <- $url');
+      debugPrint('[API GET] Body: ${response.body}');
 
       final body = json.decode(response.body);
       if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -61,11 +69,14 @@ class ApiClient {
         );
       }
     } catch (e) {
+      debugPrint('[API GET] Error: $e');
       return ApiResponse(success: false, message: e.toString());
     }
   }
 
   Future<ApiResponse> post(String url, dynamic body) async {
+    debugPrint('[API POST] Request -> $url');
+    debugPrint('[API POST] Body: ${json.encode(body)}');
     try {
       final response = await http
           .post(
@@ -75,6 +86,9 @@ class ApiClient {
           )
           .timeout(const Duration(seconds: 45));
 
+      debugPrint('[API POST] Response (${response.statusCode}) <- $url');
+      debugPrint('[API POST] Body: ${response.body}');
+
       final resBody = json.decode(response.body);
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return ApiResponse(success: true, data: resBody);
@@ -85,11 +99,14 @@ class ApiClient {
         );
       }
     } catch (e) {
+      debugPrint('[API POST] Error: $e');
       return ApiResponse(success: false, message: e.toString());
     }
   }
 
   Future<ApiResponse> put(String url, dynamic body) async {
+    debugPrint('[API PUT] Request -> $url');
+    debugPrint('[API PUT] Body: ${json.encode(body)}');
     try {
       final response = await http
           .put(
@@ -99,6 +116,9 @@ class ApiClient {
           )
           .timeout(const Duration(seconds: 45));
 
+      debugPrint('[API PUT] Response (${response.statusCode}) <- $url');
+      debugPrint('[API PUT] Body: ${response.body}');
+
       final resBody = json.decode(response.body);
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return ApiResponse(success: true, data: resBody);
@@ -109,15 +129,20 @@ class ApiClient {
         );
       }
     } catch (e) {
+      debugPrint('[API PUT] Error: $e');
       return ApiResponse(success: false, message: e.toString());
     }
   }
 
   Future<ApiResponse> delete(String url) async {
+    debugPrint('[API DELETE] Request -> $url');
     try {
       final response = await http
           .delete(Uri.parse(url), headers: _getHeaders())
           .timeout(const Duration(seconds: 30));
+
+      debugPrint('[API DELETE] Response (${response.statusCode}) <- $url');
+      debugPrint('[API DELETE] Body: ${response.body}');
 
       final resBody = json.decode(response.body);
       if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -129,6 +154,7 @@ class ApiClient {
         );
       }
     } catch (e) {
+      debugPrint('[API DELETE] Error: $e');
       return ApiResponse(success: false, message: e.toString());
     }
   }

@@ -38,17 +38,23 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _submit() async {
-    if (!_formKey.currentState!.validate()) return;
+    debugPrint('[LoginScreen] _submit() clicked. Mode: ${_isLogin ? "LOGIN" : "REGISTER"}');
+    if (!_formKey.currentState!.validate()) {
+      debugPrint('[LoginScreen] Form validation failed');
+      return;
+    }
 
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
     bool success;
     if (_isLogin) {
+      debugPrint('[LoginScreen] Attempting login with email: ${_emailController.text.trim()}');
       success = await authProvider.login(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
     } else {
+      debugPrint('[LoginScreen] Attempting register for: ${_nameController.text.trim()} (${_emailController.text.trim()})');
       success = await authProvider.register(
         name: _nameController.text.trim(),
         email: _emailController.text.trim(),
@@ -59,6 +65,8 @@ class _LoginScreenState extends State<LoginScreen> {
         gstin: _gstinController.text.trim().toUpperCase(),
       );
     }
+
+    debugPrint('[LoginScreen] Result success=$success, error=${authProvider.errorMessage}');
 
     if (!success && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
