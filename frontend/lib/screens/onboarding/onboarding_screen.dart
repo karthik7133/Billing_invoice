@@ -85,7 +85,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   Future<void> _finish() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('onboarding_done', true);
-    widget.onFinished();
+    // Guard: widget may be disposed by the time async completes
+    if (mounted) {
+      widget.onFinished();
+    }
   }
 
   @override
@@ -116,7 +119,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   child: Padding(
                     padding: const EdgeInsets.only(top: 8, right: 16),
                     child: TextButton(
-                      onPressed: _finish,
+                      onPressed: () => _finish(),
                       child: const Text(
                         'Skip',
                         style: TextStyle(
@@ -242,7 +245,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                               const Spacer(),
                               // Next / Get Started button
                               GestureDetector(
-                                onTap: _next,
+                                onTap: () => _next(),
                                 child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 300),
                                   padding: EdgeInsets.symmetric(

@@ -21,24 +21,13 @@ class AuthProvider with ChangeNotifier {
   bool get isAuthenticated => _isAuthenticated;
   bool get hasCheckedAuth => _hasCheckedAuth;
 
+  /// Checks for a stored token on startup.
+  /// Does NOT make a network call — trusts the stored token immediately.
+  /// Token will be naturally validated on the first real API call.
   Future<void> checkAuthStatus() async {
     await _api.init();
     if (_api.token != null && _api.token!.isNotEmpty) {
-      // Verify token is still valid against the server
-      final res = await _api.get(Endpoints.me);
-      if (res.success && res.data != null) {
-        if (res.data['user'] != null) {
-          _user = UserModel.fromJson(res.data['user']);
-        }
-        if (res.data['business'] != null) {
-          _business = BusinessModel.fromJson(res.data['business']);
-        }
-        _isAuthenticated = true;
-      } else {
-        // Token expired or invalid — clear it
-        _api.setToken(null);
-        _isAuthenticated = false;
-      }
+      _isAuthenticated = true;
     } else {
       _isAuthenticated = false;
     }
@@ -82,7 +71,7 @@ class AuthProvider with ChangeNotifier {
       notifyListeners();
       return true;
     } else {
-      _errorMessage = res.message ?? 'Registration failed. Please try again.';
+      _errorMessage = res.message ?? 'Registration failed. Please check your details and try again.';
       _isAuthenticated = false;
       notifyListeners();
       return false;
@@ -119,7 +108,7 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  /// Demo mode — no account needed, local only
+  /// Demo mode — no account needed, local-only data
   void loginAsDemo() {
     _user = UserModel(
       id: 'user_demo',
