@@ -24,10 +24,22 @@ class AuthProvider with ChangeNotifier {
   Future<void> checkAuthStatus() async {
     await _api.init();
     if (_api.token != null && _api.token!.isNotEmpty) {
-      _isAuthenticated = true;
-      await fetchMe();
+      // Verify token is still valid against the server
+      final res = await _api.get(Endpoints.me);
+      if (res.success && res.data != null) {
+        if (res.data['user'] != null) {
+          _user = UserModel.fromJson(res.data['user']);
+        }
+        if (res.data['business'] != null) {
+          _business = BusinessModel.fromJson(res.data['business']);
+        }
+        _isAuthenticated = true;
+      } else {
+        // Token expired or invalid — clear it
+        _api.setToken(null);
+        _isAuthenticated = false;
+      }
     } else {
-      // No stored token — user must log in or use demo
       _isAuthenticated = false;
     }
     _hasCheckedAuth = true;
@@ -59,27 +71,21 @@ class AuthProvider with ChangeNotifier {
 
     _isLoading = false;
 
-    if (res.success && res.data != null) {
-      final token = res.data['token'];
-      _api.setToken(token);
+    if (res.success && res.data != null && res.data['token'] != null) {
+      _api.setToken(res.data['token']);
       _user = UserModel.fromJson(res.data['user']);
       if (res.data['business'] != null) {
         _business = BusinessModel.fromJson(res.data['business']);
       }
       _isAuthenticated = true;
+      _errorMessage = null;
       notifyListeners();
       return true;
     } else {
-      // Demo fallback if backend is unreachable
-      _user = UserModel(
-        id: 'user_demo',
-        name: name,
-        email: email,
-        phone: phone ?? '9876543210',
-      );
-      _isAuthenticated = true;
+      _errorMessage = res.message ?? 'Registration failed. Please try again.';
+      _isAuthenticated = false;
       notifyListeners();
-      return true;
+      return false;
     }
   }
 
@@ -95,38 +101,34 @@ class AuthProvider with ChangeNotifier {
 
     _isLoading = false;
 
-    if (res.success && res.data != null) {
-      final token = res.data['token'];
-      _api.setToken(token);
+    if (res.success && res.data != null && res.data['token'] != null) {
+      _api.setToken(res.data['token']);
       _user = UserModel.fromJson(res.data['user']);
       if (res.data['business'] != null) {
         _business = BusinessModel.fromJson(res.data['business']);
       }
       _isAuthenticated = true;
+      _errorMessage = null;
       notifyListeners();
       return true;
     } else {
-      // Demo fallback — only succeed if it's a demo email or backend unreachable
-      _user = UserModel(
-        id: 'user_demo',
-        name: email.split('@').first,
-        email: email,
-        phone: '9876543210',
-      );
-      _isAuthenticated = true;
+      _errorMessage = res.message ?? 'Invalid email or password.';
+      _isAuthenticated = false;
       notifyListeners();
-      return true;
+      return false;
     }
   }
 
+  /// Demo mode — no account needed, local only
   void loginAsDemo() {
     _user = UserModel(
       id: 'user_demo',
-      name: 'Ravi Kumar',
-      email: 'demo@abcelectronics.in',
-      phone: '9876543210',
+      name: 'Demo User',
+      email: 'demo@billing.app',
+      phone: '',
     );
     _isAuthenticated = true;
+    _errorMessage = null;
     notifyListeners();
   }
 
@@ -148,6 +150,7 @@ class AuthProvider with ChangeNotifier {
     _user = null;
     _business = null;
     _isAuthenticated = false;
+    _errorMessage = null;
     notifyListeners();
   }
 }

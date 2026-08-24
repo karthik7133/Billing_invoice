@@ -49,7 +49,7 @@ class ApiClient {
     try {
       final response = await http
           .get(Uri.parse(url), headers: _getHeaders())
-          .timeout(const Duration(seconds: 8));
+          .timeout(const Duration(seconds: 30));
 
       final body = json.decode(response.body);
       if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -73,7 +73,7 @@ class ApiClient {
             headers: _getHeaders(),
             body: json.encode(body),
           )
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 45));
 
       final resBody = json.decode(response.body);
       if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -97,7 +97,7 @@ class ApiClient {
             headers: _getHeaders(),
             body: json.encode(body),
           )
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 45));
 
       final resBody = json.decode(response.body);
       if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -117,7 +117,7 @@ class ApiClient {
     try {
       final response = await http
           .delete(Uri.parse(url), headers: _getHeaders())
-          .timeout(const Duration(seconds: 8));
+          .timeout(const Duration(seconds: 30));
 
       final resBody = json.decode(response.body);
       if (response.statusCode >= 200 && response.statusCode < 300) {

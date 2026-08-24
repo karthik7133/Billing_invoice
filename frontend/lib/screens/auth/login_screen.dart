@@ -42,13 +42,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
+    bool success;
     if (_isLogin) {
-      await authProvider.login(
+      success = await authProvider.login(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
     } else {
-      await authProvider.register(
+      success = await authProvider.register(
         name: _nameController.text.trim(),
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
@@ -58,7 +59,18 @@ class _LoginScreenState extends State<LoginScreen> {
         gstin: _gstinController.text.trim().toUpperCase(),
       );
     }
-    // Auth router in main.dart watches isAuthenticated and auto-navigates
+
+    if (!success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(authProvider.errorMessage ?? 'Something went wrong. Please try again.'),
+          backgroundColor: Colors.red.shade700,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      );
+    }
+    // On success, _AppRouter in main.dart watches isAuthenticated and auto-navigates
   }
 
   void _demoLogin() {
