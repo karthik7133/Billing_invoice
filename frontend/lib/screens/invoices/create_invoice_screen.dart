@@ -851,7 +851,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                               Icon(Icons.info_outline, size: 16, color: Color(0xFF2563EB)),
                               SizedBox(width: 6),
                               Text(
-                                'Extra / Over Money (Advance):',
+                                'Over Due (Extra / Advance Paid):',
                                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF1E3A8A)),
                               ),
                             ],

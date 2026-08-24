@@ -319,6 +319,7 @@ const updateInvoiceStatus = async (req, res) => {
     if (amountPaid !== undefined) {
       invoice.amountPaid = Number(amountPaid);
       invoice.balanceDue = Number(Math.max(0, invoice.grandTotal - invoice.amountPaid).toFixed(2));
+      invoice.excessAmount = invoice.amountPaid > invoice.grandTotal ? Number((invoice.amountPaid - invoice.grandTotal).toFixed(2)) : 0;
       if (invoice.amountPaid >= invoice.grandTotal) {
         invoice.status = 'PAID';
       } else if (invoice.amountPaid > 0) {

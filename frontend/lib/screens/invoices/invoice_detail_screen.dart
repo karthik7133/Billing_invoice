@@ -362,7 +362,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text(
-                            'Extra / Over Money (Advance):',
+                            'Over Due (Extra / Advance Paid):',
                             style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF1E3A8A)),
                           ),
                           Text(

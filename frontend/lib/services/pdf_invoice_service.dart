@@ -358,19 +358,20 @@ class PdfInvoiceService {
                         _buildSummaryRow('Balance Due:', '₹ ${invoice.balanceDue.toStringAsFixed(2)}', fontBold: fontBold, color: invoice.balanceDue > 0 ? PdfColors.red700 : PdfColors.green700),
                       ],
                       if (invoice.hasOverMoney) ...[
-                        pw.SizedBox(height: 4),
+                        pw.SizedBox(height: 5),
                         pw.Container(
-                          padding: const pw.EdgeInsets.symmetric(vertical: 3, horizontal: 4),
+                          padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 6),
                           decoration: pw.BoxDecoration(
                             color: PdfColors.blue50,
-                            borderRadius: pw.BorderRadius.circular(2),
-                            border: pw.Border.all(color: PdfColors.blue200, width: 0.5),
+                            borderRadius: pw.BorderRadius.circular(3),
+                            border: pw.Border.all(color: PdfColors.blue300, width: 0.8),
                           ),
-                          child: _buildSummaryRow(
-                            'Extra / Over Money:',
-                            '₹ ${invoice.overMoneyAmount.toStringAsFixed(2)}',
-                            fontBold: fontBold,
-                            color: PdfColors.blue900,
+                          child: pw.Row(
+                            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                            children: [
+                              pw.Text('Over Due (Extra / Advance):', style: pw.TextStyle(font: fontBold, fontSize: 9, color: PdfColors.blue900)),
+                              pw.Text('₹ ${invoice.overMoneyAmount.toStringAsFixed(2)}', style: pw.TextStyle(font: fontBold, fontSize: 10, color: PdfColors.blue900)),
+                            ],
                           ),
                         ),
                       ],
