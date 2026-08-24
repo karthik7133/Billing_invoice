@@ -23,15 +23,24 @@ const getCustomers = async (req, res) => {
 
     const customers = await Customer.find(query).sort({ createdAt: -1 }).lean();
 
-    // Deduplicate any duplicate customer entries with exact same name
+    // Deduplicate and cleanup redundant documents permanently from DB
     const uniqueCustomers = [];
     const seenNames = new Set();
+    const duplicateIds = [];
+
     for (const cust of customers) {
       const lowerName = (cust.name || '').trim().toLowerCase();
       if (!seenNames.has(lowerName)) {
         seenNames.add(lowerName);
         uniqueCustomers.push(cust);
+      } else {
+        duplicateIds.push(cust._id);
       }
+    }
+
+    // Clean up duplicate documents from DB in the background
+    if (duplicateIds.length > 0) {
+      Customer.deleteMany({ _id: { $in: duplicateIds }, userId: req.user._id }).exec().catch(() => {});
     }
 
     // Aggregate balances and last transaction date from Invoices
@@ -222,19 +231,32 @@ const updateCustomer = async (req, res) => {
   }
 };
 
-// @desc    Delete customer
+// @desc    Delete customer and all duplicate records
 // @route   DELETE /api/customers/:id
 // @access  Private
 const deleteCustomer = async (req, res) => {
   try {
-    const customer = await Customer.findOneAndDelete({
+    const customer = await Customer.findOne({
       _id: req.params.id,
       userId: req.user._id,
     });
 
     if (!customer) {
-      return res.status(404).json({ success: false, message: 'Customer not found' });
+      // Fallback direct delete by ID
+      await Customer.deleteOne({ _id: req.params.id, userId: req.user._id });
+      return res.json({ success: true, message: 'Customer deleted successfully' });
     }
+
+    const customerName = (customer.name || '').trim();
+
+    // Delete this customer document and any duplicate records with the same name for this user
+    await Customer.deleteMany({
+      userId: req.user._id,
+      $or: [
+        { _id: customer._id },
+        { name: { $regex: new RegExp(`^${customerName.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}$`, 'i') } },
+      ],
+    });
 
     res.json({ success: true, message: 'Customer deleted successfully' });
   } catch (error) {

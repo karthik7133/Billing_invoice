@@ -261,46 +261,58 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
             ),
           ),
 
-          // 2. Search & Filter Bar (Image 3)
+          // 2. Search Bar
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             child: Container(
-              height: 44,
+              height: 46,
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE2E8F0), width: 1.0),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.02),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  const SizedBox(width: 12),
-                  const Icon(Icons.search, color: Color(0xFF2563EB), size: 20),
-                  const SizedBox(width: 8),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 12),
+                    child: Icon(Icons.search_rounded, color: Color(0xFF2563EB), size: 20),
+                  ),
                   Expanded(
                     child: TextField(
                       controller: _searchController,
                       onChanged: (val) => setState(() => _searchQuery = val),
+                      style: const TextStyle(fontSize: 14, color: Color(0xFF1E293B), fontWeight: FontWeight.w500),
                       decoration: const InputDecoration(
-                        hintText: 'Search Transactions',
-                        hintStyle: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                        hintText: 'Search Transactions by #no or status...',
+                        hintStyle: TextStyle(fontSize: 13, color: Color(0xFF94A3B8), fontWeight: FontWeight.normal),
                         border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        focusedErrorBorder: InputBorder.none,
                         isDense: true,
-                        contentPadding: EdgeInsets.zero,
+                        contentPadding: EdgeInsets.symmetric(vertical: 12),
                       ),
                     ),
                   ),
                   if (_searchQuery.isNotEmpty)
                     IconButton(
-                      icon: const Icon(Icons.clear, size: 16, color: Color(0xFF94A3B8)),
+                      splashRadius: 18,
+                      icon: const Icon(Icons.cancel_rounded, size: 18, color: Color(0xFF94A3B8)),
                       onPressed: () {
                         _searchController.clear();
                         setState(() => _searchQuery = '');
                       },
                     ),
-                  IconButton(
-                    icon: const Icon(Icons.filter_alt_outlined, color: Color(0xFF2563EB), size: 20),
-                    onPressed: () {},
-                  ),
                 ],
               ),
             ),

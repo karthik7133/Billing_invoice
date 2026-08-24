@@ -121,11 +121,16 @@ class CustomerProvider with ChangeNotifier {
   }
 
   Future<bool> deleteCustomer(String id) async {
+    final target = getCustomerById(id);
+    final targetName = target?.name.trim().toLowerCase();
+
+    // Immediately remove from local list by id and name
+    _customers.removeWhere((c) => c.id == id || (targetName != null && c.name.trim().toLowerCase() == targetName));
+    notifyListeners();
+
     if (id.isNotEmpty) {
       await _api.delete('${Endpoints.customers}/$id');
     }
-    _customers.removeWhere((c) => c.id == id);
-    notifyListeners();
     return true;
   }
 }
