@@ -1,5 +1,5 @@
 import 'dart:typed_data';
-import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -7,376 +7,210 @@ import '../models/invoice_model.dart';
 import '../core/utils/currency_formatter.dart';
 
 class PdfInvoiceService {
+  // Exact Design Tokens from LaTeX Sales Bill Template
+  static final PdfColor brandPurple = PdfColor.fromHex('#8B85D9');
+  static final PdfColor textGray = PdfColor.fromHex('#5F5F5F');
+  static final PdfColor lineGray = PdfColor.fromHex('#D9D9D9');
+  static final PdfColor darkText = PdfColor.fromHex('#1A1A1A');
+  static final PdfColor lightPurple = PdfColor.fromHex('#F0EFFF');
+
   static Future<Uint8List> generateTaxInvoicePdf(InvoiceModel invoice) async {
     final pdf = pw.Document();
 
-    // Fetch Google font for clean rendering
-    final fontRegular = await PdfGoogleFonts.interRegular();
-    final fontBold = await PdfGoogleFonts.interBold();
-    final fontSemiBold = await PdfGoogleFonts.interSemiBold();
+    // High quality font with full unicode and ₹ glyph support
+    final fontRegular = await PdfGoogleFonts.notoSansRegular();
+    final fontBold = await PdfGoogleFonts.notoSansBold();
+    final fontItalic = await PdfGoogleFonts.notoSansItalic();
 
     final business = invoice.businessSnapshot;
     final customer = invoice.customerSnapshot;
 
-    // Load business logo if available (network or fallback)
+    // Load business logo if available
     pw.ImageProvider? logoImage;
     if (business.logo.isNotEmpty && business.logo.startsWith('http')) {
       try {
         logoImage = await networkImage(business.logo);
-      } catch (e) {
+      } catch (_) {
         logoImage = null;
       }
     }
 
+    // Quantity calculations
+    final totalQty = invoice.items.fold<double>(0, (sum, it) => sum + it.quantity);
+    final isWholeTotalQty = totalQty.truncateToDouble() == totalQty;
+    final totalQtyString = isWholeTotalQty ? totalQty.toStringAsFixed(0) : totalQty.toStringAsFixed(2);
+
+    // Excess / Over Money logic
+    final grandTotal = invoice.grandTotal;
+    final received = invoice.amountPaid;
+    final hasExcess = received > grandTotal || invoice.excessAmount > 0;
+    final excessAmount = invoice.overMoneyAmount;
+    final displayBalance = hasExcess ? 0.0 : (grandTotal > received ? (grandTotal - received) : 0.0);
+
+    final dateString = DateFormat('dd-MM-yyyy').format(invoice.invoiceDate);
+
+    // Amount in words
+    String amountInWords = invoice.amountInWords.trim();
+    if (amountInWords.isEmpty) {
+      amountInWords = CurrencyFormatter.format(grandTotal);
+    }
+    if (!amountInWords.toLowerCase().endsWith('only') && !amountInWords.toLowerCase().endsWith('rupees')) {
+      amountInWords = '$amountInWords Rupees only';
+    }
+
     pdf.addPage(
       pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(28),
+        pageFormat: const PdfPageFormat(
+          8.5 * PdfPageFormat.inch,
+          11.0 * PdfPageFormat.inch,
+          marginLeft: 1.9 * PdfPageFormat.cm,
+          marginRight: 1.9 * PdfPageFormat.cm,
+          marginTop: 1.6 * PdfPageFormat.cm,
+          marginBottom: 1.6 * PdfPageFormat.cm,
+        ),
         theme: pw.ThemeData.withFont(
           base: fontRegular,
           bold: fontBold,
-          fontFallback: [fontRegular, fontSemiBold],
+          italic: fontItalic,
         ),
         build: (context) => [
-          // 1. Header with Tax Invoice Title
-          pw.Container(
-            padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 10),
-            decoration: pw.BoxDecoration(
-              color: PdfColors.blue900,
-              borderRadius: pw.BorderRadius.circular(4),
-            ),
-            child: pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              children: [
-                pw.Text(
-                  'TAX INVOICE',
-                  style: pw.TextStyle(
-                    font: fontBold,
-                    color: PdfColors.white,
-                    fontSize: 16,
-                    letterSpacing: 1,
-                  ),
-                ),
-                pw.Text(
-                  invoice.isInterState ? 'INTER-STATE (IGST)' : 'INTRA-STATE (CGST + SGST)',
-                  style: pw.TextStyle(
-                    font: fontRegular,
-                    color: PdfColors.white,
-                    fontSize: 9,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          pw.SizedBox(height: 12),
-
-          // 2. Business & Invoice Header Info
+          // ─── 1. HEADER: Company Block (Left 68%) + Logo/Badge (Right 28%) ───
           pw.Row(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
-              // Business Details
+              // Left: Company Block
               pw.Expanded(
-                flex: 3,
+                flex: 7,
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    if (logoImage != null) ...[
-                      pw.Container(
-                        height: 44,
-                        child: pw.Image(logoImage, fit: pw.BoxFit.contain),
-                      ),
-                      pw.SizedBox(height: 6),
-                    ],
                     pw.Text(
-                      business.businessName.isNotEmpty ? business.businessName : 'ABC ELECTRONICS',
-                      style: pw.TextStyle(font: fontBold, fontSize: 14, color: PdfColors.blue900),
-                    ),
-                    if (business.address.isNotEmpty)
-                      pw.Text('${business.address}, ${business.city}', style: const pw.TextStyle(fontSize: 9)),
-                    pw.Text('State: ${business.state} (${business.stateCode})', style: const pw.TextStyle(fontSize: 9)),
-                    if (business.gstin.isNotEmpty)
-                      pw.Text('GSTIN: ${business.gstin}', style: pw.TextStyle(font: fontBold, fontSize: 9, color: PdfColors.black)),
-                    if (business.pan.isNotEmpty)
-                      pw.Text('PAN: ${business.pan}', style: const pw.TextStyle(fontSize: 9)),
-                    if (business.phone.isNotEmpty)
-                      pw.Text('Phone: ${business.phone}', style: const pw.TextStyle(fontSize: 9)),
-                    if (business.email.isNotEmpty)
-                      pw.Text('Email: ${business.email}', style: const pw.TextStyle(fontSize: 9)),
-                  ],
-                ),
-              ),
-
-              pw.SizedBox(width: 14),
-
-              // Invoice Details Card
-              pw.Expanded(
-                flex: 2,
-                child: pw.Container(
-                  padding: const pw.EdgeInsets.all(8),
-                  decoration: pw.BoxDecoration(
-                    border: pw.Border.all(color: PdfColors.grey300, width: 0.8),
-                    borderRadius: pw.BorderRadius.circular(4),
-                    color: PdfColors.grey100,
-                  ),
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      _buildInfoRow('Invoice No:', invoice.invoiceNumber, fontBold: fontBold),
-                      _buildInfoRow('Invoice Date:', CurrencyFormatter.formatDate(invoice.invoiceDate)),
-                      _buildInfoRow('Due Date:', CurrencyFormatter.formatDate(invoice.dueDate)),
-                      _buildInfoRow('Place of Supply:', customer.state.isNotEmpty ? customer.state : business.state),
-                      _buildInfoRow('Status:', invoice.status, color: invoice.status == 'PAID' ? PdfColors.green700 : PdfColors.red700),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-          pw.SizedBox(height: 12),
-          pw.Divider(color: PdfColors.grey300, thickness: 0.8),
-          pw.SizedBox(height: 6),
-
-          // 3. Customer Info (Bill To / Ship To)
-          pw.Container(
-            padding: const pw.EdgeInsets.all(8),
-            decoration: pw.BoxDecoration(
-              border: pw.Border.all(color: PdfColors.grey300, width: 0.8),
-              borderRadius: pw.BorderRadius.circular(4),
-            ),
-            child: pw.Row(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Expanded(
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text('BILL TO / BUYER DETAILS', style: pw.TextStyle(font: fontBold, fontSize: 9, color: PdfColors.blue900)),
-                      pw.SizedBox(height: 4),
-                      pw.Text(customer.name, style: pw.TextStyle(font: fontBold, fontSize: 11)),
-                      if (customer.billingAddress.isNotEmpty)
-                        pw.Text(customer.billingAddress, style: const pw.TextStyle(fontSize: 9)),
-                      pw.Text('State: ${customer.state} (${customer.stateCode})', style: const pw.TextStyle(fontSize: 9)),
-                      if (customer.gstin.isNotEmpty)
-                        pw.Text('GSTIN: ${customer.gstin}', style: pw.TextStyle(font: fontBold, fontSize: 9)),
-                      if (customer.phone.isNotEmpty)
-                        pw.Text('Phone: ${customer.phone}', style: const pw.TextStyle(fontSize: 9)),
-                    ],
-                  ),
-                ),
-                pw.SizedBox(width: 14),
-                pw.Expanded(
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text('SHIP TO', style: pw.TextStyle(font: fontBold, fontSize: 9, color: PdfColors.blue900)),
-                      pw.SizedBox(height: 4),
-                      pw.Text(customer.name, style: pw.TextStyle(font: fontBold, fontSize: 10)),
-                      pw.Text(
-                        customer.shippingAddress.isNotEmpty ? customer.shippingAddress : customer.billingAddress,
-                        style: const pw.TextStyle(fontSize: 9),
+                      business.businessName.isNotEmpty ? business.businessName.toUpperCase() : 'JMJ SEA FOODS',
+                      style: pw.TextStyle(
+                        font: fontBold,
+                        fontSize: 20,
+                        color: darkText,
                       ),
-                      pw.Text('Type: ${customer.customerType.replaceAll('_', ' ')}', style: const pw.TextStyle(fontSize: 9)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          pw.SizedBox(height: 12),
-
-          // 4. Itemized Table
-          pw.Table(
-            border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.6),
-            columnWidths: {
-              0: const pw.FixedColumnWidth(22),  // #
-              1: const pw.FlexColumnWidth(3.5),  // Item
-              2: const pw.FlexColumnWidth(1.2),  // HSN
-              3: const pw.FlexColumnWidth(1.0),  // Qty
-              4: const pw.FlexColumnWidth(1.3),  // Rate
-              5: const pw.FlexColumnWidth(1.4),  // Taxable
-              6: const pw.FlexColumnWidth(1.0),  // Tax %
-              7: const pw.FlexColumnWidth(1.5),  // Amount
-            },
-            children: [
-              // Header
-              pw.TableRow(
-                decoration: const pw.BoxDecoration(color: PdfColors.grey200),
-                children: [
-                  _buildTableHeader('#'),
-                  _buildTableHeader('Item Description'),
-                  _buildTableHeader('HSN/SAC'),
-                  _buildTableHeader('Qty'),
-                  _buildTableHeader('Rate (₹)'),
-                  _buildTableHeader('Taxable (₹)'),
-                  _buildTableHeader('GST %'),
-                  _buildTableHeader('Total (₹)'),
-                ],
-              ),
-              // Items
-              ...invoice.items.asMap().entries.map((entry) {
-                final idx = entry.key + 1;
-                final item = entry.value;
-                return pw.TableRow(
-                  children: [
-                    _buildTableCell('$idx', align: pw.TextAlign.center),
-                    _buildTableCell(item.name, font: fontBold),
-                    _buildTableCell(item.hsnSac.isNotEmpty ? item.hsnSac : '-', align: pw.TextAlign.center),
-                    _buildTableCell('${item.quantity.toStringAsFixed(item.quantity.truncateToDouble() == item.quantity ? 0 : 2)} ${item.unit}', align: pw.TextAlign.center),
-                    _buildTableCell(item.rate.toStringAsFixed(2), align: pw.TextAlign.right),
-                    _buildTableCell(item.taxableAmount.toStringAsFixed(2), align: pw.TextAlign.right),
-                    _buildTableCell('${item.gstRate.toStringAsFixed(0)}%', align: pw.TextAlign.center),
-                    _buildTableCell(item.total.toStringAsFixed(2), align: pw.TextAlign.right, font: fontBold),
+                    ),
+                    pw.SizedBox(height: 4),
+                    if (business.phone.isNotEmpty)
+                      pw.Text(
+                        'Phone no.: ${business.phone}',
+                        style: pw.TextStyle(font: fontRegular, fontSize: 9.5, color: textGray),
+                      ),
+                    if (business.email.isNotEmpty)
+                      pw.Text(
+                        'Email: ${business.email}',
+                        style: pw.TextStyle(font: fontRegular, fontSize: 9.5, color: textGray),
+                      ),
+                    if (business.gstin.isNotEmpty)
+                      pw.Text(
+                        'GSTIN: ${business.gstin}',
+                        style: pw.TextStyle(font: fontRegular, fontSize: 9.5, color: textGray),
+                      ),
                   ],
-                );
-              }),
+                ),
+              ),
+
+              // Right: Logo / Crab Circle Badge
+              pw.Container(
+                width: 48,
+                height: 48,
+                alignment: pw.Alignment.center,
+                decoration: pw.BoxDecoration(
+                  shape: pw.BoxShape.circle,
+                  border: pw.Border.all(color: brandPurple, width: 1.5),
+                ),
+                child: logoImage != null
+                    ? pw.ClipOval(child: pw.Image(logoImage, width: 42, height: 42, fit: pw.BoxFit.cover))
+                    : pw.Text(
+                        'crab',
+                        style: pw.TextStyle(
+                          font: fontBold,
+                          fontSize: 9,
+                          color: brandPurple,
+                        ),
+                      ),
+              ),
             ],
           ),
 
+          pw.SizedBox(height: 6),
+          pw.Divider(color: lineGray, thickness: 0.6),
+          pw.SizedBox(height: 10),
+
+          // ─── 2. TITLE: SALES BILL ───
+          pw.Center(
+            child: pw.Text(
+              'SALES BILL',
+              style: pw.TextStyle(
+                font: fontBold,
+                fontSize: 22,
+                color: brandPurple,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ),
+          pw.SizedBox(height: 4),
+          pw.Divider(color: lineGray, thickness: 0.6),
           pw.SizedBox(height: 12),
 
-          // 5. Tax Breakdown & Financial Totals
+          // ─── 3. BILL TO (Left 55%) / INVOICE DETAILS (Right 40%) ───
           pw.Row(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
-              // Left: Amount in Words & Bank Details
+              // Bill To
               pw.Expanded(
-                flex: 3,
+                flex: 55,
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Container(
-                      padding: const pw.EdgeInsets.all(6),
-                      decoration: pw.BoxDecoration(
-                        color: PdfColors.grey100,
-                        border: pw.Border.all(color: PdfColors.grey300, width: 0.6),
-                        borderRadius: pw.BorderRadius.circular(3),
-                      ),
-                      child: pw.Column(
-                        crossAxisAlignment: pw.CrossAxisAlignment.start,
-                        children: [
-                          pw.Text('Amount in Words:', style: pw.TextStyle(font: fontBold, fontSize: 8)),
-                          pw.Text(
-                            invoice.amountInWords.isNotEmpty ? invoice.amountInWords : 'Rupees Only',
-                            style: pw.TextStyle(font: fontRegular, fontSize: 8.5, fontStyle: pw.FontStyle.italic),
-                          ),
-                        ],
-                      ),
+                    pw.Text(
+                      'Bill To',
+                      style: pw.TextStyle(font: fontBold, fontSize: 10.5, color: darkText),
                     ),
-                    pw.SizedBox(height: 8),
-
-                    // Description & Notes
-                    if (invoice.description.isNotEmpty || invoice.notes.isNotEmpty) ...[
-                      pw.Container(
-                        padding: const pw.EdgeInsets.all(6),
-                        decoration: pw.BoxDecoration(
-                          color: PdfColors.grey100,
-                          border: pw.Border.all(color: PdfColors.grey300, width: 0.6),
-                          borderRadius: pw.BorderRadius.circular(3),
-                        ),
-                        child: pw.Column(
-                          crossAxisAlignment: pw.CrossAxisAlignment.start,
-                          children: [
-                            pw.Text('Notes / Description:', style: pw.TextStyle(font: fontBold, fontSize: 8)),
-                            pw.Text(
-                              invoice.description.isNotEmpty ? invoice.description : invoice.notes,
-                              style: pw.TextStyle(font: fontRegular, fontSize: 8),
-                            ),
-                          ],
-                        ),
+                    pw.SizedBox(height: 3),
+                    pw.Text(
+                      customer.name.isNotEmpty ? customer.name : 'SVSF/TN',
+                      style: pw.TextStyle(font: fontBold, fontSize: 11, color: darkText),
+                    ),
+                    if (customer.phone.isNotEmpty)
+                      pw.Text(
+                        'Phone: ${customer.phone}',
+                        style: pw.TextStyle(font: fontRegular, fontSize: 9.5, color: textGray),
                       ),
-                      pw.SizedBox(height: 6),
-                    ],
-
-                    // Payment Method Badge
-                    if (invoice.paymentType.isNotEmpty) ...[
-                      pw.Row(
-                        children: [
-                          pw.Text('Payment Type: ', style: pw.TextStyle(font: fontBold, fontSize: 8)),
-                          pw.Text(invoice.paymentType, style: pw.TextStyle(font: fontRegular, fontSize: 8, color: PdfColors.blue900)),
-                        ],
+                    if (customer.billingAddress.isNotEmpty)
+                      pw.Text(
+                        customer.billingAddress,
+                        style: pw.TextStyle(font: fontRegular, fontSize: 9.5, color: textGray),
                       ),
-                      pw.SizedBox(height: 6),
-                    ],
-
-                    // Bank Details
-                    if (business.bankDetails.accountNumber.isNotEmpty || business.bankDetails.upiId.isNotEmpty) ...[
-                      pw.Text('Bank & Payment Details:', style: pw.TextStyle(font: fontBold, fontSize: 8.5, color: PdfColors.blue900)),
-                      pw.SizedBox(height: 2),
-                      if (business.bankDetails.bankName.isNotEmpty)
-                        pw.Text('Bank: ${business.bankDetails.bankName}', style: const pw.TextStyle(fontSize: 8)),
-                      if (business.bankDetails.accountNumber.isNotEmpty)
-                        pw.Text('A/C No: ${business.bankDetails.accountNumber}', style: const pw.TextStyle(fontSize: 8)),
-                      if (business.bankDetails.ifscCode.isNotEmpty)
-                        pw.Text('IFSC: ${business.bankDetails.ifscCode}', style: const pw.TextStyle(fontSize: 8)),
-                      if (business.bankDetails.upiId.isNotEmpty)
-                        pw.Text('UPI ID: ${business.bankDetails.upiId}', style: pw.TextStyle(font: fontBold, fontSize: 8)),
-                    ],
                   ],
                 ),
               ),
 
-              pw.SizedBox(width: 14),
-
-              // Right: Financial Summary Box
+              // Invoice Details
               pw.Expanded(
-                flex: 2,
-                child: pw.Container(
-                  padding: const pw.EdgeInsets.all(8),
-                  decoration: pw.BoxDecoration(
-                    border: pw.Border.all(color: PdfColors.grey300, width: 0.8),
-                    borderRadius: pw.BorderRadius.circular(4),
-                  ),
-                  child: pw.Column(
-                    children: [
-                      _buildSummaryRow('Subtotal:', '₹ ${invoice.subtotal.toStringAsFixed(2)}'),
-                      if (invoice.totalDiscount > 0)
-                        _buildSummaryRow('Discount:', '- ₹ ${invoice.totalDiscount.toStringAsFixed(2)}', color: PdfColors.red700),
-                      _buildSummaryRow('Taxable Amount:', '₹ ${invoice.taxableAmount.toStringAsFixed(2)}'),
-                      if (!invoice.isInterState) ...[
-                        _buildSummaryRow('CGST:', '₹ ${invoice.cgst.toStringAsFixed(2)}'),
-                        _buildSummaryRow('SGST:', '₹ ${invoice.sgst.toStringAsFixed(2)}'),
-                      ] else ...[
-                        _buildSummaryRow('IGST:', '₹ ${invoice.igst.toStringAsFixed(2)}'),
-                      ],
-                      if (invoice.otherCharges > 0)
-                        _buildSummaryRow('Other Charges:', '₹ ${invoice.otherCharges.toStringAsFixed(2)}'),
-                      if (invoice.roundOff != 0)
-                        _buildSummaryRow('Round Off:', '₹ ${invoice.roundOff.toStringAsFixed(2)}'),
-                      pw.Divider(color: PdfColors.grey400, thickness: 0.6),
-                      pw.Row(
-                        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                        children: [
-                          pw.Text('Grand Total:', style: pw.TextStyle(font: fontBold, fontSize: 11, color: PdfColors.blue900)),
-                          pw.Text('₹ ${invoice.grandTotal.toStringAsFixed(2)}', style: pw.TextStyle(font: fontBold, fontSize: 12, color: PdfColors.blue900)),
-                        ],
-                      ),
-                      if (invoice.amountPaid > 0) ...[
-                        pw.SizedBox(height: 4),
-                        _buildSummaryRow('Received / Paid:', '₹ ${invoice.amountPaid.toStringAsFixed(2)}', color: PdfColors.green700, fontBold: fontBold),
-                        _buildSummaryRow('Balance Due:', '₹ ${invoice.balanceDue.toStringAsFixed(2)}', fontBold: fontBold, color: invoice.balanceDue > 0 ? PdfColors.red700 : PdfColors.green700),
-                      ],
-                      if (invoice.hasOverMoney) ...[
-                        pw.SizedBox(height: 5),
-                        pw.Container(
-                          padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 6),
-                          decoration: pw.BoxDecoration(
-                            color: PdfColors.blue50,
-                            borderRadius: pw.BorderRadius.circular(3),
-                            border: pw.Border.all(color: PdfColors.blue300, width: 0.8),
-                          ),
-                          child: pw.Row(
-                            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                            children: [
-                              pw.Text('Over Due (Extra / Advance):', style: pw.TextStyle(font: fontBold, fontSize: 9, color: PdfColors.blue900)),
-                              pw.Text('₹ ${invoice.overMoneyAmount.toStringAsFixed(2)}', style: pw.TextStyle(font: fontBold, fontSize: 10, color: PdfColors.blue900)),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
+                flex: 40,
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.end,
+                  children: [
+                    pw.Text(
+                      'Invoice Details',
+                      style: pw.TextStyle(font: fontBold, fontSize: 10.5, color: darkText),
+                    ),
+                    pw.SizedBox(height: 3),
+                    pw.Text(
+                      'Invoice No.: ${invoice.invoiceNumber}',
+                      style: pw.TextStyle(font: fontRegular, fontSize: 10, color: darkText),
+                    ),
+                    pw.SizedBox(height: 2),
+                    pw.Text(
+                      'Date: $dateString',
+                      style: pw.TextStyle(font: fontRegular, fontSize: 10, color: darkText),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -384,55 +218,218 @@ class PdfInvoiceService {
 
           pw.SizedBox(height: 16),
 
-          // 6. Terms and Signature
+          // ─── 4. ITEMS TABLE ───
+          pw.Table(
+            columnWidths: {
+              0: const pw.FixedColumnWidth(24),
+              1: const pw.FlexColumnWidth(3.8),
+              2: const pw.FixedColumnWidth(60),
+              3: const pw.FixedColumnWidth(40),
+              4: const pw.FixedColumnWidth(72),
+              5: const pw.FixedColumnWidth(88),
+            },
+            children: [
+              // Header Row: brandPurple background, white bold text
+              pw.TableRow(
+                decoration: pw.BoxDecoration(color: brandPurple),
+                children: [
+                  _buildTableHeader('#', align: pw.TextAlign.center),
+                  _buildTableHeader('Item Name', align: pw.TextAlign.left),
+                  _buildTableHeader('Quantity', align: pw.TextAlign.center),
+                  _buildTableHeader('Unit', align: pw.TextAlign.center),
+                  _buildTableHeader('Price/ Unit', align: pw.TextAlign.right),
+                  _buildTableHeader('Amount', align: pw.TextAlign.right),
+                ],
+              ),
+
+              // Data Rows
+              ...invoice.items.asMap().entries.map((entry) {
+                final idx = entry.key + 1;
+                final item = entry.value;
+                final isWholeQty = item.quantity.truncateToDouble() == item.quantity;
+                final qtyStr = isWholeQty ? item.quantity.toStringAsFixed(0) : item.quantity.toStringAsFixed(2);
+                final unitStr = item.unit.isNotEmpty ? item.unit : '--';
+
+                return pw.TableRow(
+                  children: [
+                    _buildTableCell('$idx', align: pw.TextAlign.center, color: darkText),
+                    _buildTableCell(item.name, align: pw.TextAlign.left, color: darkText),
+                    _buildTableCell(qtyStr, align: pw.TextAlign.center, color: darkText),
+                    _buildTableCell(unitStr, align: pw.TextAlign.center, color: darkText),
+                    _buildTableCell('₹ ${CurrencyFormatter.format(item.rate, showSymbol: false)}', align: pw.TextAlign.right, color: darkText),
+                    _buildTableCell('₹ ${CurrencyFormatter.format(item.total, showSymbol: false)}', align: pw.TextAlign.right, color: darkText),
+                  ],
+                );
+              }),
+            ],
+          ),
+
+          // Total Row in Items Table: thin dark rule above, bold values
+          pw.Container(
+            padding: const pw.EdgeInsets.symmetric(vertical: 5),
+            decoration: pw.BoxDecoration(
+              border: pw.Border(
+                top: pw.BorderSide(color: darkText, width: 0.8),
+                bottom: pw.BorderSide(color: lineGray, width: 0.5),
+              ),
+            ),
+            child: pw.Row(
+              children: [
+                pw.SizedBox(width: 24),
+                pw.Expanded(
+                  flex: 38,
+                  child: pw.Text(
+                    'Total',
+                    style: pw.TextStyle(font: fontBold, fontSize: 10.5, color: darkText),
+                  ),
+                ),
+                pw.Container(
+                  width: 60,
+                  alignment: pw.Alignment.center,
+                  child: pw.Text(
+                    totalQtyString,
+                    style: pw.TextStyle(font: fontBold, fontSize: 10.5, color: darkText),
+                  ),
+                ),
+                pw.SizedBox(width: 40),
+                pw.SizedBox(width: 72),
+                pw.Container(
+                  width: 88,
+                  alignment: pw.Alignment.centerRight,
+                  child: pw.Text(
+                    '₹ ${CurrencyFormatter.format(grandTotal, showSymbol: false)}',
+                    style: pw.TextStyle(font: fontBold, fontSize: 10.5, color: darkText),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          pw.SizedBox(height: 18),
+
+          // ─── 5. DESCRIPTION (Left 55%) / TOTALS SUMMARY BOX (Right 40%) ───
           pw.Row(
-            crossAxisAlignment: pw.CrossAxisAlignment.end,
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
+              // Description
               pw.Expanded(
-                flex: 3,
+                flex: 55,
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text('Terms & Conditions:', style: pw.TextStyle(font: fontBold, fontSize: 8.5)),
-                    pw.SizedBox(height: 2),
                     pw.Text(
-                      invoice.termsAndConditions.isNotEmpty
-                          ? invoice.termsAndConditions
-                          : '1. Goods once sold will not be taken back.\n2. Subject to local jurisdiction.',
-                      style: const pw.TextStyle(fontSize: 7.5, color: PdfColors.grey700),
+                      'Description',
+                      style: pw.TextStyle(font: fontBold, fontSize: 10.5, color: darkText),
+                    ),
+                    pw.SizedBox(height: 6),
+                    pw.Text(
+                      invoice.description.isNotEmpty
+                          ? invoice.description
+                          : (invoice.notes.isNotEmpty ? invoice.notes : 'Thank you for your business!'),
+                      style: pw.TextStyle(
+                        font: fontRegular,
+                        fontSize: 9.5,
+                        lineSpacing: 2.0,
+                        color: darkText,
+                      ),
                     ),
                   ],
                 ),
               ),
-              pw.SizedBox(width: 14),
+
+              pw.SizedBox(width: 20),
+
+              // Totals Summary Box
               pw.Expanded(
-                flex: 2,
+                flex: 40,
                 child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.center,
                   children: [
-                    pw.Text(
-                      'For ${business.businessName.isNotEmpty ? business.businessName : "ABC Electronics"}',
-                      style: pw.TextStyle(font: fontBold, fontSize: 9),
-                      textAlign: pw.TextAlign.center,
+                    // Sub Total
+                    _buildSummaryRow(
+                      'Sub Total',
+                      '₹ ${CurrencyFormatter.format(invoice.subtotal > 0 ? invoice.subtotal : grandTotal, showSymbol: false)}',
+                      fontRegular: fontRegular,
+                      fontBold: fontBold,
                     ),
-                    pw.SizedBox(height: 34),
+
+                    // Purple Bar Total Row
                     pw.Container(
-                      width: 120,
-                      decoration: const pw.BoxDecoration(
-                        border: pw.Border(top: pw.BorderSide(color: PdfColors.grey600, width: 0.8)),
+                      color: brandPurple,
+                      padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+                      margin: const pw.EdgeInsets.symmetric(vertical: 2),
+                      child: pw.Row(
+                        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                        children: [
+                          pw.Text(
+                            'Total',
+                            style: pw.TextStyle(font: fontBold, fontSize: 10.5, color: PdfColors.white),
+                          ),
+                          pw.Text(
+                            '₹ ${CurrencyFormatter.format(grandTotal, showSymbol: false)}',
+                            style: pw.TextStyle(font: fontBold, fontSize: 10.5, color: PdfColors.white),
+                          ),
+                        ],
                       ),
-                      child: pw.Padding(
-                        padding: const pw.EdgeInsets.only(top: 3),
-                        child: pw.Text(
-                          'Authorized Signatory',
-                          style: const pw.TextStyle(fontSize: 8),
-                          textAlign: pw.TextAlign.center,
+                    ),
+
+                    // Received
+                    _buildSummaryRow(
+                      'Received',
+                      '₹ ${CurrencyFormatter.format(received, showSymbol: false)}',
+                      fontRegular: fontRegular,
+                      fontBold: fontBold,
+                    ),
+
+                    // Balance
+                    _buildSummaryRow(
+                      'Balance',
+                      '₹ ${CurrencyFormatter.format(displayBalance, showSymbol: false)}',
+                      fontRegular: fontRegular,
+                      fontBold: fontBold,
+                    ),
+
+                    // Advance / Excess Received Row
+                    if (hasExcess) ...[
+                      pw.Container(
+                        color: lightPurple,
+                        padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+                        margin: const pw.EdgeInsets.only(top: 2),
+                        child: pw.Row(
+                          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                          children: [
+                            pw.Text(
+                              'Advance / Excess Received',
+                              style: pw.TextStyle(font: fontBold, fontSize: 9.5, color: darkText),
+                            ),
+                            pw.Text(
+                              '₹ ${CurrencyFormatter.format(excessAmount, showSymbol: false)}',
+                              style: pw.TextStyle(font: fontBold, fontSize: 10, color: brandPurple),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
+              ),
+            ],
+          ),
+
+          pw.SizedBox(height: 20),
+
+          // ─── 6. AMOUNT IN WORDS ───
+          pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                'Invoice Amount In Words',
+                style: pw.TextStyle(font: fontBold, fontSize: 10.5, color: darkText),
+              ),
+              pw.SizedBox(height: 4),
+              pw.Text(
+                amountInWords,
+                style: pw.TextStyle(font: fontRegular, fontSize: 10, color: darkText),
               ),
             ],
           ),
@@ -443,13 +440,17 @@ class PdfInvoiceService {
     return pdf.save();
   }
 
-  static pw.Widget _buildTableHeader(String text) {
+  static pw.Widget _buildTableHeader(String text, {pw.TextAlign align = pw.TextAlign.left}) {
     return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+      padding: const pw.EdgeInsets.symmetric(vertical: 5, horizontal: 4),
       child: pw.Text(
         text,
-        style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8.5),
-        textAlign: pw.TextAlign.center,
+        textAlign: align,
+        style: pw.TextStyle(
+          color: PdfColors.white,
+          fontSize: 10,
+          fontWeight: pw.FontWeight.bold,
+        ),
       ),
     );
   }
@@ -457,40 +458,17 @@ class PdfInvoiceService {
   static pw.Widget _buildTableCell(
     String text, {
     pw.TextAlign align = pw.TextAlign.left,
-    pw.Font? font,
-  }) {
-    return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-      child: pw.Text(
-        text,
-        style: pw.TextStyle(font: font, fontSize: 8.5),
-        textAlign: align,
-      ),
-    );
-  }
-
-  static pw.Widget _buildInfoRow(
-    String label,
-    String value, {
-    pw.Font? fontBold,
     PdfColor? color,
   }) {
     return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(vertical: 1.5),
-      child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-        children: [
-          pw.Text(label, style: const pw.TextStyle(fontSize: 8.5, color: PdfColors.grey700)),
-          pw.Text(
-            value,
-            style: pw.TextStyle(
-              font: fontBold,
-              fontSize: 8.5,
-              fontWeight: pw.FontWeight.bold,
-              color: color ?? PdfColors.black,
-            ),
-          ),
-        ],
+      padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+      child: pw.Text(
+        text,
+        textAlign: align,
+        style: pw.TextStyle(
+          fontSize: 9.5,
+          color: color ?? PdfColor.fromHex('#1A1A1A'),
+        ),
       ),
     );
   }
@@ -498,22 +476,21 @@ class PdfInvoiceService {
   static pw.Widget _buildSummaryRow(
     String label,
     String value, {
-    pw.Font? fontBold,
-    PdfColor? color,
+    required pw.Font fontRegular,
+    required pw.Font fontBold,
   }) {
     return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(vertical: 1.5),
+      padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
-          pw.Text(label, style: const pw.TextStyle(fontSize: 8.5)),
+          pw.Text(
+            label,
+            style: pw.TextStyle(font: fontRegular, fontSize: 10, color: PdfColor.fromHex('#1A1A1A')),
+          ),
           pw.Text(
             value,
-            style: pw.TextStyle(
-              font: fontBold,
-              fontSize: 8.5,
-              color: color ?? PdfColors.black,
-            ),
+            style: pw.TextStyle(font: fontRegular, fontSize: 10, color: PdfColor.fromHex('#1A1A1A')),
           ),
         ],
       ),
