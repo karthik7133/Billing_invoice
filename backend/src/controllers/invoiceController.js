@@ -1,0 +1,365 @@
+const Invoice = require('../models/Invoice');
+const Business = require('../models/Business');
+const Customer = require('../models/Customer');
+const { calculateInvoiceTotals } = require('../utils/gstCalculator');
+const { numberToWordsIndian } = require('../utils/numberToWords');
+
+// Helper to format invoice number
+const formatInvoiceNumber = (prefix = 'INV', num = 1) => {
+  return `${prefix}-${String(num).padStart(4, '0')}`;
+};
+
+// @desc    Get next invoice number preview
+// @route   GET /api/invoices/next-number
+// @access  Private
+const getNextInvoiceNumber = async (req, res) => {
+  try {
+    const business = await Business.findOne({ userId: req.user._id });
+    const prefix = business ? business.invoicePrefix || 'INV' : 'INV';
+    const nextNum = business ? business.nextInvoiceNumber || 1 : 1;
+    const formatted = formatInvoiceNumber(prefix, nextNum);
+
+    res.json({
+      success: true,
+      prefix,
+      nextNumber: nextNum,
+      formattedInvoiceNumber: formatted,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Get all invoices with filtering & search
+// @route   GET /api/invoices
+// @access  Private
+const getInvoices = async (req, res) => {
+  try {
+    const { status, search, startDate, endDate, period } = req.query;
+    let query = { userId: req.user._id };
+
+    // Status filter
+    if (status && status !== 'ALL') {
+      if (status === 'UNPAID') {
+        query.status = { $in: ['ISSUED', 'PARTIALLY_PAID'] };
+      } else {
+        query.status = status;
+      }
+    }
+
+    // Date range filter
+    if (period) {
+      const now = new Date();
+      if (period === 'today') {
+        const start = new Date(now.setHours(0, 0, 0, 0));
+        const end = new Date(now.setHours(23, 59, 59, 999));
+        query.invoiceDate = { $gte: start, $lte: end };
+      } else if (period === 'week') {
+        const firstDay = new Date(now.setDate(now.getDate() - now.getDay()));
+        firstDay.setHours(0, 0, 0, 0);
+        query.invoiceDate = { $gte: firstDay };
+      } else if (period === 'month') {
+        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+        query.invoiceDate = { $gte: firstDay };
+      }
+    } else if (startDate || endDate) {
+      query.invoiceDate = {};
+      if (startDate) query.invoiceDate.$gte = new Date(startDate);
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        query.invoiceDate.$lte = end;
+      }
+    }
+
+    // Search query
+    if (search) {
+      query.$or = [
+        { invoiceNumber: { $regex: search, $options: 'i' } },
+        { 'customerSnapshot.name': { $regex: search, $options: 'i' } },
+        { 'customerSnapshot.phone': { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    const invoices = await Invoice.find(query).sort({ invoiceDate: -1, createdAt: -1 });
+
+    // Aggregate summary for the filtered results
+    const summary = invoices.reduce(
+      (acc, inv) => {
+        acc.totalAmount += inv.grandTotal || 0;
+        acc.totalPaid += inv.amountPaid || 0;
+        acc.totalDue += inv.balanceDue || 0;
+        return acc;
+      },
+      { totalAmount: 0, totalPaid: 0, totalDue: 0 }
+    );
+
+    res.json({
+      success: true,
+      count: invoices.length,
+      summary: {
+        totalAmount: Number(summary.totalAmount.toFixed(2)),
+        totalPaid: Number(summary.totalPaid.toFixed(2)),
+        totalDue: Number(summary.totalDue.toFixed(2)),
+      },
+      invoices,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Get single invoice by ID
+// @route   GET /api/invoices/:id
+// @access  Private
+const getInvoiceById = async (req, res) => {
+  try {
+    const invoice = await Invoice.findOne({
+      _id: req.params.id,
+      userId: req.user._id,
+    });
+
+    if (!invoice) {
+      return res.status(404).json({ success: false, message: 'Invoice not found' });
+    }
+
+    res.json({ success: true, invoice });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Create new invoice with GST calculation and snapshots
+// @route   POST /api/invoices
+// @access  Private
+const createInvoice = async (req, res) => {
+  try {
+    const {
+      customerId,
+      invoiceNumber: customInvoiceNumber,
+      invoiceDate,
+      dueDate,
+      items,
+      invoiceDiscount,
+      invoiceDiscountType,
+      otherCharges,
+      status = 'ISSUED',
+      amountPaid = 0,
+      notes,
+      termsAndConditions,
+    } = req.body;
+
+    if (!customerId) {
+      return res.status(400).json({ success: false, message: 'Customer is required' });
+    }
+
+    if (!items || !items.length) {
+      return res.status(400).json({ success: false, message: 'At least one item is required' });
+    }
+
+    // Fetch Customer
+    const customer = await Customer.findOne({
+      _id: customerId,
+      userId: req.user._id,
+    });
+
+    if (!customer) {
+      return res.status(404).json({ success: false, message: 'Customer not found' });
+    }
+
+    // Fetch Business Profile
+    let business = await Business.findOne({ userId: req.user._id });
+    if (!business) {
+      business = await Business.create({
+        userId: req.user._id,
+        businessName: `${req.user.name}'s Business`,
+        email: req.user.email,
+        state: 'Andhra Pradesh',
+        stateCode: '37',
+      });
+    }
+
+    // Determine invoice number
+    let finalInvoiceNumber = customInvoiceNumber;
+    if (!finalInvoiceNumber) {
+      const prefix = business.invoicePrefix || 'INV';
+      const nextNum = business.nextInvoiceNumber || 1;
+      finalInvoiceNumber = formatInvoiceNumber(prefix, nextNum);
+      // Increment business invoice counter
+      business.nextInvoiceNumber = nextNum + 1;
+      await business.save();
+    }
+
+    // Run Calculation Engine
+    const calculated = calculateInvoiceTotals({
+      items,
+      sellerState: business.state,
+      buyerState: customer.state,
+      invoiceDiscount,
+      invoiceDiscountType,
+      otherCharges,
+    });
+
+    const grandTotal = calculated.grandTotal;
+    const paid = Number(amountPaid) || 0;
+    const balanceDue = Number(Math.max(0, grandTotal - paid).toFixed(2));
+
+    let finalStatus = status;
+    if (paid >= grandTotal && grandTotal > 0) {
+      finalStatus = 'PAID';
+    } else if (paid > 0 && paid < grandTotal) {
+      finalStatus = 'PARTIALLY_PAID';
+    }
+
+    const amountInWords = numberToWordsIndian(grandTotal);
+
+    // Create Invoice with Immutable Snapshots
+    const invoice = await Invoice.create({
+      userId: req.user._id,
+      invoiceNumber: finalInvoiceNumber,
+      customerId: customer._id,
+      customerSnapshot: {
+        name: customer.name,
+        phone: customer.phone || '',
+        email: customer.email || '',
+        billingAddress: customer.billingAddress || '',
+        shippingAddress: customer.shippingAddress || customer.billingAddress || '',
+        city: customer.city || '',
+        state: customer.state,
+        stateCode: customer.stateCode || '',
+        gstin: customer.gstin || '',
+        pan: customer.pan || '',
+        customerType: customer.customerType || 'UNREGISTERED_B2C',
+      },
+      businessSnapshot: {
+        businessName: business.businessName,
+        logo: business.logo || '',
+        phone: business.phone || '',
+        email: business.email || '',
+        address: business.address || '',
+        city: business.city || '',
+        state: business.state || '',
+        stateCode: business.stateCode || '',
+        pincode: business.pincode || '',
+        gstin: business.gstin || '',
+        pan: business.pan || '',
+        bankDetails: business.bankDetails || {},
+      },
+      invoiceDate: invoiceDate ? new Date(invoiceDate) : new Date(),
+      dueDate: dueDate ? new Date(dueDate) : new Date(Date.now() + 15 * 24 * 60 * 60 * 1000),
+      items: calculated.items,
+      isInterState: calculated.isInterState,
+      subtotal: calculated.subtotal,
+      itemsDiscount: calculated.itemsDiscount,
+      extraDiscount: calculated.extraDiscount,
+      totalDiscount: calculated.totalDiscount,
+      taxableAmount: calculated.taxableAmount,
+      cgst: calculated.cgst,
+      sgst: calculated.sgst,
+      igst: calculated.igst,
+      totalTax: calculated.totalTax,
+      otherCharges: calculated.otherCharges,
+      roundOff: calculated.roundOff,
+      grandTotal: calculated.grandTotal,
+      amountPaid: paid,
+      balanceDue: balanceDue,
+      status: finalStatus,
+      notes: notes || 'Thank you for your business!',
+      termsAndConditions: termsAndConditions || business.termsAndConditions || '',
+      amountInWords: amountInWords,
+    });
+
+    res.status(201).json({ success: true, invoice });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Update invoice status / Mark as Paid
+// @route   PUT /api/invoices/:id/status
+// @access  Private
+const updateInvoiceStatus = async (req, res) => {
+  try {
+    const { status, amountPaid } = req.body;
+
+    let invoice = await Invoice.findOne({
+      _id: req.params.id,
+      userId: req.user._id,
+    });
+
+    if (!invoice) {
+      return res.status(404).json({ success: false, message: 'Invoice not found' });
+    }
+
+    if (status) invoice.status = status;
+    if (amountPaid !== undefined) {
+      invoice.amountPaid = Number(amountPaid);
+      invoice.balanceDue = Number(Math.max(0, invoice.grandTotal - invoice.amountPaid).toFixed(2));
+      if (invoice.amountPaid >= invoice.grandTotal) {
+        invoice.status = 'PAID';
+      } else if (invoice.amountPaid > 0) {
+        invoice.status = 'PARTIALLY_PAID';
+      }
+    }
+
+    await invoice.save();
+    res.json({ success: true, invoice });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Mark invoice as fully paid
+// @route   POST /api/invoices/:id/mark-paid
+// @access  Private
+const markInvoiceAsPaid = async (req, res) => {
+  try {
+    let invoice = await Invoice.findOne({
+      _id: req.params.id,
+      userId: req.user._id,
+    });
+
+    if (!invoice) {
+      return res.status(404).json({ success: false, message: 'Invoice not found' });
+    }
+
+    invoice.amountPaid = invoice.grandTotal;
+    invoice.balanceDue = 0;
+    invoice.status = 'PAID';
+
+    await invoice.save();
+    res.json({ success: true, invoice });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Delete invoice
+// @route   DELETE /api/invoices/:id
+// @access  Private
+const deleteInvoice = async (req, res) => {
+  try {
+    const invoice = await Invoice.findOneAndDelete({
+      _id: req.params.id,
+      userId: req.user._id,
+    });
+
+    if (!invoice) {
+      return res.status(404).json({ success: false, message: 'Invoice not found' });
+    }
+
+    res.json({ success: true, message: 'Invoice deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+module.exports = {
+  getNextInvoiceNumber,
+  getInvoices,
+  getInvoiceById,
+  createInvoice,
+  updateInvoiceStatus,
+  markInvoiceAsPaid,
+  deleteInvoice,
+};
