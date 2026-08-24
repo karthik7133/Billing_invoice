@@ -17,12 +17,12 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   bool _isLogin = true;
 
-  final TextEditingController _nameController = TextEditingController(text: 'Ravi Kumar');
-  final TextEditingController _businessNameController = TextEditingController(text: 'ABC Electronics & Retail');
-  final TextEditingController _emailController = TextEditingController(text: 'ravi@abcelectronics.in');
-  final TextEditingController _passwordController = TextEditingController(text: 'password123');
-  final TextEditingController _phoneController = TextEditingController(text: '9876543210');
-  final TextEditingController _gstinController = TextEditingController(text: '37AAAAA0000A1Z5');
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _businessNameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _gstinController = TextEditingController();
 
   String _selectedState = 'Andhra Pradesh';
 
