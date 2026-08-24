@@ -23,8 +23,19 @@ const getCustomers = async (req, res) => {
 
     const customers = await Customer.find(query).sort({ createdAt: -1 }).lean();
 
+    // Deduplicate any duplicate customer entries with exact same name
+    const uniqueCustomers = [];
+    const seenNames = new Set();
+    for (const cust of customers) {
+      const lowerName = (cust.name || '').trim().toLowerCase();
+      if (!seenNames.has(lowerName)) {
+        seenNames.add(lowerName);
+        uniqueCustomers.push(cust);
+      }
+    }
+
     // Aggregate balances and last transaction date from Invoices
-    const customerIds = customers.map((c) => c._id);
+    const customerIds = uniqueCustomers.map((c) => c._id);
     const invoiceAgg = await Invoice.aggregate([
       { $match: { customerId: { $in: customerIds } } },
       {
@@ -43,7 +54,7 @@ const getCustomers = async (req, res) => {
       aggMap[agg._id.toString()] = agg;
     });
 
-    const enrichedCustomers = customers.map((cust) => {
+    const enrichedCustomers = uniqueCustomers.map((cust) => {
       const agg = aggMap[cust._id.toString()];
       const openingBal = cust.openingBalance || 0;
       const invoiceDue = agg ? agg.totalBalanceDue : 0;
@@ -119,24 +130,41 @@ const createCustomer = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Customer name is required' });
     }
 
-    const customer = await Customer.create({
+    const trimmedName = name.trim();
+
+    // Check if a customer with the same name already exists for this user
+    let customer = await Customer.findOne({
       userId: req.user._id,
-      name: name.trim(),
-      phone: phone || '',
-      email: email || '',
-      billingAddress: billingAddress || '',
-      shippingAddress: shippingAddress || billingAddress || '',
-      city: city || '',
-      state: state || 'Andhra Pradesh',
-      stateCode: stateCode || '',
-      pincode: pincode || '',
-      gstin: gstin ? gstin.toUpperCase() : '',
-      pan: pan ? pan.toUpperCase() : '',
-      billingName: billingName || name.trim(),
-      openingBalance: Number(openingBalance) || 0,
-      partyType: partyType || 'CUSTOMER',
-      customerType: customerType || (gstin ? 'REGISTERED_B2B' : 'UNREGISTERED_B2C'),
+      name: { $regex: new RegExp(`^${trimmedName.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}$`, 'i') },
     });
+
+    if (customer) {
+      // Update phone / gstin if provided
+      if (phone && !customer.phone) customer.phone = phone;
+      if (gstin && !customer.gstin) customer.gstin = gstin.toUpperCase();
+      if (billingAddress && !customer.billingAddress) customer.billingAddress = billingAddress;
+      if (billingName && !customer.billingName) customer.billingName = billingName;
+      await customer.save();
+    } else {
+      customer = await Customer.create({
+        userId: req.user._id,
+        name: trimmedName,
+        phone: phone || '',
+        email: email || '',
+        billingAddress: billingAddress || '',
+        shippingAddress: shippingAddress || billingAddress || '',
+        city: city || '',
+        state: state || 'Andhra Pradesh',
+        stateCode: stateCode || '',
+        pincode: pincode || '',
+        gstin: gstin ? gstin.toUpperCase() : '',
+        pan: pan ? pan.toUpperCase() : '',
+        billingName: billingName || trimmedName,
+        openingBalance: Number(openingBalance) || 0,
+        partyType: partyType || 'CUSTOMER',
+        customerType: customerType || (gstin ? 'REGISTERED_B2B' : 'UNREGISTERED_B2C'),
+      });
+    }
 
     const responseCust = customer.toObject();
     responseCust.balance = responseCust.openingBalance || 0;

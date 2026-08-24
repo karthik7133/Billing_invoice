@@ -66,7 +66,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     final businessName = businessProvider.business.businessName.isNotEmpty
         ? businessProvider.business.businessName
-        : 'JMJ SEA FOODS';
+        : 'My Business';
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7FB),
@@ -116,10 +116,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
               color: const Color(0xFFE8F1FC),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Center(
+            child: Center(
               child: Text(
-                '🦀',
-                style: TextStyle(fontSize: 18),
+                businessName.isNotEmpty ? businessName[0].toUpperCase() : 'B',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF2563EB)),
               ),
             ),
           ),
@@ -476,7 +476,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
         final dateText = party.lastTransactionDate != null
             ? DateFormat('dd MMM, yy').format(party.lastTransactionDate!)
-            : DateFormat('dd MMM, yy').format(DateTime.now());
+            : 'No transactions';
 
         final isReceivable = calculatedBalance >= 0;
         final balanceAbs = calculatedBalance.abs();

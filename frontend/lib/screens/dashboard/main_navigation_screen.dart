@@ -338,8 +338,11 @@ class _MenuScreen extends StatelessWidget {
                     color: const Color(0xFFE8F1FC),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Center(
-                    child: Text('🦀', style: TextStyle(fontSize: 26)),
+                  child: Center(
+                    child: Text(
+                      business.businessName.isNotEmpty ? business.businessName[0].toUpperCase() : 'B',
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xFF2563EB)),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 14),
@@ -348,7 +351,7 @@ class _MenuScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        business.businessName.isNotEmpty ? business.businessName : 'JMJ SEA FOODS',
+                        business.businessName.isNotEmpty ? business.businessName : 'My Business',
                         style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
                       ),
                       const SizedBox(height: 2),
