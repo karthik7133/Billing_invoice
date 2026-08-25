@@ -98,7 +98,10 @@ class LocalCacheService {
     }
   }
 
-  // ─── Business Profile ──────────────────────────────────────────────────────
+  // ─── Business Profile & Multi-Companies ────────────────────────────────────
+  static const _keyCompanies = 'cached_companies_v1';
+  static const _keyActiveCompanyId = 'active_company_id_v1';
+
   Future<void> saveBusiness(BusinessModel business) async {
     try {
       await init();
@@ -118,6 +121,48 @@ class LocalCacheService {
       return BusinessModel.fromJson(map);
     } catch (e) {
       debugPrint('[LocalCache] Error loading business: $e');
+      return null;
+    }
+  }
+
+  Future<void> saveCompanies(List<BusinessModel> companies) async {
+    try {
+      await init();
+      final data = json.encode(companies.map((c) => c.toJson()).toList());
+      await _prefs?.setString(_keyCompanies, data);
+    } catch (e) {
+      debugPrint('[LocalCache] Error saving companies: $e');
+    }
+  }
+
+  Future<List<BusinessModel>> loadCompanies() async {
+    try {
+      await init();
+      final raw = _prefs?.getString(_keyCompanies);
+      if (raw == null || raw.isEmpty) return [];
+      final list = json.decode(raw) as List<dynamic>;
+      return list.map((c) => BusinessModel.fromJson(c as Map<String, dynamic>)).toList();
+    } catch (e) {
+      debugPrint('[LocalCache] Error loading companies: $e');
+      return [];
+    }
+  }
+
+  Future<void> saveActiveCompanyId(String id) async {
+    try {
+      await init();
+      await _prefs?.setString(_keyActiveCompanyId, id);
+    } catch (e) {
+      debugPrint('[LocalCache] Error saving active company id: $e');
+    }
+  }
+
+  Future<String?> loadActiveCompanyId() async {
+    try {
+      await init();
+      return _prefs?.getString(_keyActiveCompanyId);
+    } catch (e) {
+      debugPrint('[LocalCache] Error loading active company id: $e');
       return null;
     }
   }

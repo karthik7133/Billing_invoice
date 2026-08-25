@@ -14,6 +14,9 @@ import '../../widgets/cloud_server_status_pill.dart';
 import 'dashboard_screen.dart';
 import '../products/product_list_screen.dart';
 import '../business/business_profile_screen.dart';
+import '../business/manage_companies_screen.dart';
+import '../settings/party_settings_screen.dart';
+import '../settings/invoice_print_settings_screen.dart';
 import '../invoices/invoice_history_screen.dart';
 import '../invoices/create_invoice_screen.dart';
 import '../customers/customer_list_screen.dart';
@@ -622,14 +625,15 @@ class _AnalyticsDashboardScreen extends StatelessWidget {
   }
 }
 
-// ─── Menu Tab (MENU) ───────────────────────────────────────────────────────────
+// ─── Menu Tab (MENU & SETTINGS) ───────────────────────────────────────────────
 
 class _MenuScreen extends StatelessWidget {
   const _MenuScreen();
 
   @override
   Widget build(BuildContext context) {
-    final business = Provider.of<BusinessProvider>(context).business;
+    final businessProvider = Provider.of<BusinessProvider>(context);
+    final business = businessProvider.business;
     final auth = Provider.of<AuthProvider>(context, listen: false);
 
     return Scaffold(
@@ -638,7 +642,7 @@ class _MenuScreen extends StatelessWidget {
         backgroundColor: Colors.white,
         elevation: 0.5,
         title: const Text(
-          'Menu & Settings',
+          'Settings & Business',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
         ),
         actions: const [
@@ -649,7 +653,7 @@ class _MenuScreen extends StatelessWidget {
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
         children: [
           // Business Profile Header Card
           Container(
@@ -710,21 +714,40 @@ class _MenuScreen extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 18),
+
+          const SizedBox(height: 20),
+          _buildSectionHeader('COMPANY & WORKSPACE'),
+          _buildMenuTile(
+            icon: Icons.domain_rounded,
+            title: 'Manage Companies',
+            subtitle: 'Switch business profile, add companies or restore backup',
+            badgeText: business.businessName.isNotEmpty ? business.businessName : 'Current',
+            color: const Color(0xFFDC2626),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ManageCompaniesScreen()),
+              );
+            },
+          ),
           _buildMenuTile(
             icon: Icons.store_outlined,
             title: 'Business Profile & Bank Details',
-            subtitle: 'Manage GSTIN, Address, Bank A/C, UPI ID',
+            subtitle: 'Manage GSTIN, Address, Bank A/C, IFSC, UPI ID',
+            color: const Color(0xFF2563EB),
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const BusinessProfileScreen()),
               );
             },
           ),
+
+          const SizedBox(height: 18),
+          _buildSectionHeader('REPORTS & TRANSACTIONS'),
           _buildMenuTile(
             icon: Icons.receipt_long_outlined,
-            title: 'All Invoices & Sales Ledger',
-            subtitle: 'View, filter, print and share PDF invoices',
+            title: 'Sales Reports & All Invoices',
+            subtitle: 'View, filter, export and share sales ledger & PDFs',
+            color: const Color(0xFF059669),
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const InvoiceHistoryScreen()),
@@ -732,15 +755,57 @@ class _MenuScreen extends StatelessWidget {
             },
           ),
           _buildMenuTile(
+            icon: Icons.shopping_bag_outlined,
+            title: 'Purchase Transactions & Reports',
+            subtitle: 'Inward supplies, purchase records & party dues',
+            color: const Color(0xFFEA580C),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const InvoiceHistoryScreen()),
+              );
+            },
+          ),
+
+          const SizedBox(height: 18),
+          _buildSectionHeader('PRINTING & PARTY PREFERENCES'),
+          _buildMenuTile(
+            icon: Icons.print_outlined,
+            title: 'Invoice Print & PDF Settings',
+            subtitle: 'Crab logo toggle, footer bank info, A4/Thermal layouts',
+            color: const Color(0xFF7C3AED),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const InvoicePrintSettingsScreen()),
+              );
+            },
+          ),
+          _buildMenuTile(
+            icon: Icons.people_outline_rounded,
+            title: 'Party Settings',
+            subtitle: 'Credit period rules, duplicate invoice numbers, statements',
+            color: const Color(0xFF0891B2),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const PartySettingsScreen()),
+              );
+            },
+          ),
+
+          const SizedBox(height: 18),
+          _buildSectionHeader('DATA & ACCOUNT'),
+          _buildMenuTile(
             icon: Icons.cloud_sync_outlined,
             title: 'Cloud Auto-Sync & Reconnect',
             subtitle: 'Force refresh backend data and verify cloud connection',
+            color: const Color(0xFF2563EB),
             onTap: () {
               final busP = Provider.of<BusinessProvider>(context, listen: false);
               final custP = Provider.of<CustomerProvider>(context, listen: false);
               final prodP = Provider.of<ProductProvider>(context, listen: false);
               final invP = Provider.of<InvoiceProvider>(context, listen: false);
+              final authP = Provider.of<AuthProvider>(context, listen: false);
               BackendSyncService.instance.forceSync(
+                authProvider: authP,
                 businessProvider: busP,
                 customerProvider: custP,
                 productProvider: prodP,
@@ -769,12 +834,28 @@ class _MenuScreen extends StatelessWidget {
     );
   }
 
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 8),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w800,
+          color: Color(0xFF64748B),
+          letterSpacing: 0.8,
+        ),
+      ),
+    );
+  }
+
   Widget _buildMenuTile({
     required IconData icon,
     required String title,
     required String subtitle,
     required VoidCallback onTap,
     Color? color,
+    String? badgeText,
   }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -799,13 +880,33 @@ class _MenuScreen extends StatelessWidget {
           ),
           child: Icon(icon, color: color ?? const Color(0xFF2563EB), size: 20),
         ),
-        title: Text(
-          title,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-            color: color ?? const Color(0xFF1E293B),
-          ),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: color == AppColors.payableRed ? AppColors.payableRed : const Color(0xFF1E293B),
+                ),
+              ),
+            ),
+            if (badgeText != null) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFBFDBFE)),
+                ),
+                child: Text(
+                  badgeText,
+                  style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Color(0xFF2563EB)),
+                ),
+              ),
+            ],
+          ],
         ),
         subtitle: Text(
           subtitle,
@@ -817,3 +918,4 @@ class _MenuScreen extends StatelessWidget {
     );
   }
 }
+

@@ -75,6 +75,8 @@ class BusinessModel {
   final BankDetails bankDetails;
   final String termsAndConditions;
   final String signatureUrl;
+  final bool syncOn;
+  final String lastSaleCreated;
 
   BusinessModel({
     required this.id,
@@ -94,6 +96,8 @@ class BusinessModel {
     BankDetails? bankDetails,
     this.termsAndConditions = '1. Goods once sold will not be taken back.\n2. Payment due within 15 days.',
     this.signatureUrl = '',
+    this.syncOn = true,
+    this.lastSaleCreated = '',
   }) : bankDetails = bankDetails ?? BankDetails();
 
   factory BusinessModel.fromJson(Map<String, dynamic> json) {
@@ -115,6 +119,8 @@ class BusinessModel {
       bankDetails: BankDetails.fromJson(json['bankDetails'] as Map<String, dynamic>?),
       termsAndConditions: json['termsAndConditions']?.toString() ?? '',
       signatureUrl: json['signatureUrl']?.toString() ?? '',
+      syncOn: json['syncOn'] == true || json['syncOn'] == null,
+      lastSaleCreated: json['lastSaleCreated']?.toString() ?? '',
     );
   }
 
@@ -138,6 +144,8 @@ class BusinessModel {
       'bankDetails': bankDetails.toJson(),
       'termsAndConditions': termsAndConditions,
       'signatureUrl': signatureUrl,
+      'syncOn': syncOn,
+      'lastSaleCreated': lastSaleCreated,
     };
   }
 
@@ -159,6 +167,8 @@ class BusinessModel {
     BankDetails? bankDetails,
     String? termsAndConditions,
     String? signatureUrl,
+    bool? syncOn,
+    String? lastSaleCreated,
   }) {
     return BusinessModel(
       id: id ?? this.id,
@@ -178,6 +188,8 @@ class BusinessModel {
       bankDetails: bankDetails ?? this.bankDetails,
       termsAndConditions: termsAndConditions ?? this.termsAndConditions,
       signatureUrl: signatureUrl ?? this.signatureUrl,
+      syncOn: syncOn ?? this.syncOn,
+      lastSaleCreated: lastSaleCreated ?? this.lastSaleCreated,
     );
   }
 }
