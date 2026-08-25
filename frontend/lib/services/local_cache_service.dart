@@ -26,21 +26,24 @@ class LocalCacheService {
     _prefs ??= await SharedPreferences.getInstance();
   }
 
-  // ─── Customers ─────────────────────────────────────────────────────────────
-  Future<void> saveCustomers(List<CustomerModel> customers) async {
+  /// Key scoped to company — appends companyId for isolation; empty = legacy global key
+  String _customerKey(String companyId) =>
+      companyId.isNotEmpty ? '${_keyCustomers}_$companyId' : _keyCustomers;
+
+  Future<void> saveCustomers(List<CustomerModel> customers, {String companyId = ''}) async {
     try {
       await init();
       final data = json.encode(customers.map((c) => c.toJson()).toList());
-      await _prefs?.setString(_keyCustomers, data);
+      await _prefs?.setString(_customerKey(companyId), data);
     } catch (e) {
       debugPrint('[LocalCache] Error saving customers: $e');
     }
   }
 
-  Future<List<CustomerModel>> loadCustomers() async {
+  Future<List<CustomerModel>> loadCustomers({String companyId = ''}) async {
     try {
       await init();
-      final raw = _prefs?.getString(_keyCustomers);
+      final raw = _prefs?.getString(_customerKey(companyId));
       if (raw == null || raw.isEmpty) return [];
       final list = json.decode(raw) as List<dynamic>;
       return list.map((c) => CustomerModel.fromJson(c as Map<String, dynamic>)).toList();
@@ -75,20 +78,24 @@ class LocalCacheService {
   }
 
   // ─── Invoices ──────────────────────────────────────────────────────────────
-  Future<void> saveInvoices(List<InvoiceModel> invoices) async {
+  /// Key scoped to company — appends companyId for isolation; empty = legacy global key
+  String _invoiceKey(String companyId) =>
+      companyId.isNotEmpty ? '${_keyInvoices}_$companyId' : _keyInvoices;
+
+  Future<void> saveInvoices(List<InvoiceModel> invoices, {String companyId = ''}) async {
     try {
       await init();
       final data = json.encode(invoices.map((i) => i.toJson()).toList());
-      await _prefs?.setString(_keyInvoices, data);
+      await _prefs?.setString(_invoiceKey(companyId), data);
     } catch (e) {
       debugPrint('[LocalCache] Error saving invoices: $e');
     }
   }
 
-  Future<List<InvoiceModel>> loadInvoices() async {
+  Future<List<InvoiceModel>> loadInvoices({String companyId = ''}) async {
     try {
       await init();
-      final raw = _prefs?.getString(_keyInvoices);
+      final raw = _prefs?.getString(_invoiceKey(companyId));
       if (raw == null || raw.isEmpty) return [];
       final list = json.decode(raw) as List<dynamic>;
       return list.map((i) => InvoiceModel.fromJson(i as Map<String, dynamic>)).toList();

@@ -33,7 +33,7 @@ class CustomerProvider with ChangeNotifier {
 
   Future<void> _initFromCache() async {
     if (_isInitialized) return;
-    final cached = await _cache.loadCustomers();
+    final cached = await _cache.loadCustomers(companyId: _activeCompanyId);
     if (cached.isNotEmpty && _customers.isEmpty) {
       _customers = cached;
       notifyListeners();
@@ -78,7 +78,7 @@ class CustomerProvider with ChangeNotifier {
           .map((c) => CustomerModel.fromJson(c as Map<String, dynamic>))
           .toList();
       _customers = list;
-      await _cache.saveCustomers(_customers);
+      await _cache.saveCustomers(_customers, companyId: _activeCompanyId);
     }
     notifyListeners();
   }
@@ -127,7 +127,7 @@ class CustomerProvider with ChangeNotifier {
       _customers.insert(0, finalCustomer);
     }
 
-    await _cache.saveCustomers(_customers);
+    await _cache.saveCustomers(_customers, companyId: _activeCompanyId);
     notifyListeners();
     return finalCustomer;
   }
@@ -140,7 +140,7 @@ class CustomerProvider with ChangeNotifier {
         balance: current.balance + newDueAmount,
         lastTransactionDate: DateTime.now(),
       );
-      _cache.saveCustomers(_customers);
+      _cache.saveCustomers(_customers, companyId: _activeCompanyId);
       notifyListeners();
     }
   }
@@ -161,7 +161,7 @@ class CustomerProvider with ChangeNotifier {
     final index = _customers.indexWhere((c) => c.id == updated.id);
     if (index != -1) {
       _customers[index] = updated;
-      await _cache.saveCustomers(_customers);
+      await _cache.saveCustomers(_customers, companyId: _activeCompanyId);
       notifyListeners();
       return true;
     }
@@ -174,7 +174,7 @@ class CustomerProvider with ChangeNotifier {
 
     _customers.removeWhere(
         (c) => c.id == id || (targetName != null && c.name.trim().toLowerCase() == targetName));
-    await _cache.saveCustomers(_customers);
+    await _cache.saveCustomers(_customers, companyId: _activeCompanyId);
     notifyListeners();
 
     if (id.isNotEmpty) {

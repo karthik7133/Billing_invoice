@@ -54,11 +54,32 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 
   void _refreshAllData() {
+    // Run async logic without blocking the caller (fire-and-forget with error guard)
+    _refreshAllDataAsync().catchError((e) {
+      debugPrint('[MainNavigation] _refreshAllData error: $e');
+    });
+  }
+
+  Future<void> _refreshAllDataAsync() async {
     final busP = context.read<BusinessProvider>();
     final custP = context.read<CustomerProvider>();
     final prodP = context.read<ProductProvider>();
     final invP = context.read<InvoiceProvider>();
     final authP = context.read<AuthProvider>();
+
+    // ── Wait for BusinessProvider to finish loading cache ────────────────────
+    // Ensures we read the correct persisted active company ID, not the default.
+    await busP.ensureInitialized();
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // Set company scope on providers BEFORE any data fetch
+    final activeCompanyId = busP.activeCompanyId;
+    if (activeCompanyId.isNotEmpty) {
+      custP.setActiveCompany(activeCompanyId);
+      invP.setActiveCompany(activeCompanyId);
+    }
+
+    if (!mounted) return;
 
     BackendSyncService.instance.forceSync(
       authProvider: authP,

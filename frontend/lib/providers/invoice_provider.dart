@@ -42,7 +42,7 @@ class InvoiceProvider with ChangeNotifier {
 
   Future<void> _initFromCache() async {
     if (_isInitialized) return;
-    final cached = await _cache.loadInvoices();
+    final cached = await _cache.loadInvoices(companyId: _activeCompanyId);
     if (cached.isNotEmpty && _invoices.isEmpty) {
       _invoices = cached;
       notifyListeners();
@@ -167,7 +167,7 @@ class InvoiceProvider with ChangeNotifier {
           .map((i) => InvoiceModel.fromJson(i as Map<String, dynamic>))
           .toList();
       _invoices = list;
-      await _cache.saveInvoices(_invoices);
+      await _cache.saveInvoices(_invoices, companyId: _activeCompanyId);
     }
     notifyListeners();
   }
@@ -326,7 +326,7 @@ class InvoiceProvider with ChangeNotifier {
     }
 
     _invoices.insert(0, finalInvoice);
-    await _cache.saveInvoices(_invoices);
+    await _cache.saveInvoices(_invoices, companyId: _activeCompanyId);
     _isLoading = false;
     notifyListeners();
     return finalInvoice;

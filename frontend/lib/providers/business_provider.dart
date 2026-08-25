@@ -40,13 +40,18 @@ class BusinessProvider with ChangeNotifier {
   bool _isLoading = false;
   String? _errorMessage;
   bool _isInitialized = false;
+  late final Future<void> _initFuture;
 
   BusinessProvider() {
-    _initFromCache();
+    _initFuture = _initFromCache();
   }
+
+  /// Await this before reading business.id to ensure cache is loaded
+  Future<void> ensureInitialized() => _initFuture;
 
   List<BusinessModel> get companies => _companies;
   BusinessModel get business => _business;
+  String get activeCompanyId => _business.id;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
