@@ -25,8 +25,19 @@ class InvoiceProvider with ChangeNotifier {
   DateTime? _startDate;
   DateTime? _endDate;
 
+  /// The active company ID — set when the user switches companies
+  String _activeCompanyId = '';
+
   InvoiceProvider() {
     _initFromCache();
+  }
+
+  /// Called by ManageCompaniesScreen / BusinessProvider when active company changes
+  void setActiveCompany(String companyId) {
+    _activeCompanyId = companyId;
+    _invoices = [];
+    _isInitialized = false;
+    notifyListeners();
   }
 
   Future<void> _initFromCache() async {
@@ -143,7 +154,12 @@ class InvoiceProvider with ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    final res = await _api.get(Endpoints.invoices);
+    // Build URL with companyId query param if set
+    final url = _activeCompanyId.isNotEmpty
+        ? '${Endpoints.invoices}?companyId=$_activeCompanyId'
+        : Endpoints.invoices;
+
+    final res = await _api.get(url);
     _isLoading = false;
 
     if (res.success && res.data != null && res.data['invoices'] != null) {
@@ -299,6 +315,7 @@ class InvoiceProvider with ChangeNotifier {
         'description': description,
         'notes': notes,
         'termsAndConditions': termsAndConditions,
+        if (_activeCompanyId.isNotEmpty) 'companyId': _activeCompanyId,
       });
 
       if (res.success && res.data != null && res.data['invoice'] != null) {

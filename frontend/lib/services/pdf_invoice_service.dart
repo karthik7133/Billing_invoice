@@ -28,22 +28,22 @@ class PdfInvoiceService {
     final business = invoice.businessSnapshot;
     final customer = invoice.customerSnapshot;
 
-    // Load crab_logo.png from assets, with network/memory fallback
+    // Use company logo from businessSnapshot if available, else fall back to crab_logo.png
     pw.ImageProvider? logoImage;
     try {
-      logoImage = await imageFromAssetBundle('assets/images/crab_logo.png');
+      if (business.logo.isNotEmpty && business.logo.startsWith('http')) {
+        // Use company's own logo
+        logoImage = await networkImage(business.logo);
+      } else {
+        // Fallback: default crab_logo.png asset
+        logoImage = await imageFromAssetBundle('assets/images/crab_logo.png');
+      }
     } catch (_) {
       try {
         final byteData = await rootBundle.load('assets/images/crab_logo.png');
         logoImage = pw.MemoryImage(byteData.buffer.asUint8List());
       } catch (_) {
-        if (business.logo.isNotEmpty && business.logo.startsWith('http')) {
-          try {
-            logoImage = await networkImage(business.logo);
-          } catch (_) {
-            logoImage = null;
-          }
-        }
+        logoImage = null;
       }
     }
 
@@ -553,22 +553,20 @@ class PdfInvoiceService {
             ? invoices.first.businessSnapshot
             : BusinessModel(id: '', businessName: 'JMJ SEA FOODS'));
 
-    // Load crab_logo.png from assets, with network/memory fallback (exact match with Tax Invoice)
+    // Use company logo if available, else fall back to crab_logo.png
     pw.ImageProvider? logoImage;
     try {
-      logoImage = await imageFromAssetBundle('assets/images/crab_logo.png');
+      if (b.logo.isNotEmpty && b.logo.startsWith('http')) {
+        logoImage = await networkImage(b.logo);
+      } else {
+        logoImage = await imageFromAssetBundle('assets/images/crab_logo.png');
+      }
     } catch (_) {
       try {
         final byteData = await rootBundle.load('assets/images/crab_logo.png');
         logoImage = pw.MemoryImage(byteData.buffer.asUint8List());
       } catch (_) {
-        if (b.logo.isNotEmpty && b.logo.startsWith('http')) {
-          try {
-            logoImage = await networkImage(b.logo);
-          } catch (_) {
-            logoImage = null;
-          }
-        }
+        logoImage = null;
       }
     }
 

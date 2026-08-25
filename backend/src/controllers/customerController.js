@@ -6,8 +6,16 @@ const Invoice = require('../models/Invoice');
 // @access  Private
 const getCustomers = async (req, res) => {
   try {
-    const { search, customerType } = req.query;
+    const { search, customerType, companyId } = req.query;
     let query = { userId: req.user._id };
+
+    // ─── Company isolation ─────────────────────────────────────────────────────
+    // If a companyId is provided, filter strictly to that company.
+    // Existing records with no companyId (legacy) fall back to userId-only scope.
+    if (companyId && companyId.trim()) {
+      query.companyId = companyId.trim();
+    }
+    // ──────────────────────────────────────────────────────────────────────────
 
     if (search) {
       query.$or = [
@@ -23,7 +31,7 @@ const getCustomers = async (req, res) => {
 
     const customers = await Customer.find(query).sort({ createdAt: -1 }).lean();
 
-    // Deduplicate and cleanup redundant documents permanently from DB
+    // Deduplicate within the same company scope only
     const uniqueCustomers = [];
     const seenNames = new Set();
     const duplicateIds = [];
@@ -38,15 +46,19 @@ const getCustomers = async (req, res) => {
       }
     }
 
-    // Clean up duplicate documents from DB in the background
     if (duplicateIds.length > 0) {
       Customer.deleteMany({ _id: { $in: duplicateIds }, userId: req.user._id }).exec().catch(() => {});
     }
 
-    // Aggregate balances and last transaction date from Invoices
+    // Aggregate balances from Invoices (scoped to same companyId if provided)
     const customerIds = uniqueCustomers.map((c) => c._id);
+    const invoiceMatchQuery = { customerId: { $in: customerIds } };
+    if (companyId && companyId.trim()) {
+      invoiceMatchQuery.companyId = companyId.trim();
+    }
+
     const invoiceAgg = await Invoice.aggregate([
-      { $match: { customerId: { $in: customerIds } } },
+      { $match: invoiceMatchQuery },
       {
         $group: {
           _id: '$customerId',
@@ -87,6 +99,7 @@ const getCustomers = async (req, res) => {
 // @access  Private
 const getCustomerById = async (req, res) => {
   try {
+    const { companyId } = req.query;
     const customer = await Customer.findOne({
       _id: req.params.id,
       userId: req.user._id,
@@ -96,11 +109,13 @@ const getCustomerById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Customer not found' });
     }
 
-    // Fetch transactions for this customer
-    const invoices = await Invoice.find({
-      customerId: customer._id,
-      userId: req.user._id,
-    }).sort({ invoiceDate: -1, createdAt: -1 });
+    // Fetch invoices scoped to the same company
+    const invoiceQuery = { customerId: customer._id, userId: req.user._id };
+    if (companyId && companyId.trim()) {
+      invoiceQuery.companyId = companyId.trim();
+    }
+
+    const invoices = await Invoice.find(invoiceQuery).sort({ invoiceDate: -1, createdAt: -1 });
 
     const totalBalanceDue = invoices.reduce((sum, inv) => sum + (inv.balanceDue || 0), 0);
     customer.balance = (customer.openingBalance || 0) + totalBalanceDue;
@@ -133,6 +148,7 @@ const createCustomer = async (req, res) => {
       openingBalance,
       partyType,
       customerType,
+      companyId,  // ← NEW
     } = req.body;
 
     if (!name || !name.trim()) {
@@ -140,15 +156,20 @@ const createCustomer = async (req, res) => {
     }
 
     const trimmedName = name.trim();
+    const companyScope = companyId ? companyId.trim() : '';
 
-    // Check if a customer with the same name already exists for this user
-    let customer = await Customer.findOne({
+    // Check if customer exists within the same company scope
+    const existingQuery = {
       userId: req.user._id,
       name: { $regex: new RegExp(`^${trimmedName.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}$`, 'i') },
-    });
+    };
+    if (companyScope) {
+      existingQuery.companyId = companyScope;
+    }
+
+    let customer = await Customer.findOne(existingQuery);
 
     if (customer) {
-      // Update phone / gstin if provided
       if (phone && !customer.phone) customer.phone = phone;
       if (gstin && !customer.gstin) customer.gstin = gstin.toUpperCase();
       if (billingAddress && !customer.billingAddress) customer.billingAddress = billingAddress;
@@ -157,6 +178,7 @@ const createCustomer = async (req, res) => {
     } else {
       customer = await Customer.create({
         userId: req.user._id,
+        companyId: companyScope,
         name: trimmedName,
         phone: phone || '',
         email: email || '',
@@ -200,18 +222,8 @@ const updateCustomer = async (req, res) => {
     }
 
     const fieldsToUpdate = [
-      'name',
-      'phone',
-      'email',
-      'billingAddress',
-      'shippingAddress',
-      'city',
-      'state',
-      'stateCode',
-      'pincode',
-      'gstin',
-      'pan',
-      'customerType',
+      'name', 'phone', 'email', 'billingAddress', 'shippingAddress',
+      'city', 'state', 'stateCode', 'pincode', 'gstin', 'pan', 'customerType', 'companyId',
     ];
 
     fieldsToUpdate.forEach((field) => {
@@ -242,21 +254,25 @@ const deleteCustomer = async (req, res) => {
     });
 
     if (!customer) {
-      // Fallback direct delete by ID
       await Customer.deleteOne({ _id: req.params.id, userId: req.user._id });
       return res.json({ success: true, message: 'Customer deleted successfully' });
     }
 
     const customerName = (customer.name || '').trim();
+    const companyScope = customer.companyId || '';
 
-    // Delete this customer document and any duplicate records with the same name for this user
-    await Customer.deleteMany({
+    const deleteQuery = {
       userId: req.user._id,
       $or: [
         { _id: customer._id },
         { name: { $regex: new RegExp(`^${customerName.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}$`, 'i') } },
       ],
-    });
+    };
+    if (companyScope) {
+      deleteQuery.companyId = companyScope;
+    }
+
+    await Customer.deleteMany(deleteQuery);
 
     res.json({ success: true, message: 'Customer deleted successfully' });
   } catch (error) {

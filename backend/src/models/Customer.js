@@ -8,6 +8,12 @@ const CustomerSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    companyId: {
+      type: String,
+      trim: true,
+      default: '',
+      index: true,
+    },
     name: {
       type: String,
       required: [true, 'Customer name is required'],

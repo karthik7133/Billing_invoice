@@ -354,6 +354,10 @@ class _ManageCompaniesScreenState extends State<ManageCompaniesScreen>
 
         if (!context.mounted) return;
 
+        // Set companyId on providers BEFORE fetching so API calls are scoped correctly
+        context.read<CustomerProvider>().setActiveCompany(company.id);
+        context.read<InvoiceProvider>().setActiveCompany(company.id);
+
         // Refresh all providers with new company context
         context.read<CustomerProvider>().fetchCustomers();
         context.read<InvoiceProvider>().fetchInvoices();
@@ -436,6 +440,8 @@ class _ManageCompaniesScreenState extends State<ManageCompaniesScreen>
                       HapticFeedback.mediumImpact();
                       await businessProvider.switchToCompany(company.id);
                       if (!context.mounted) return;
+                      context.read<CustomerProvider>().setActiveCompany(company.id);
+                      context.read<InvoiceProvider>().setActiveCompany(company.id);
                       context.read<CustomerProvider>().fetchCustomers();
                       context.read<InvoiceProvider>().fetchInvoices();
                       context.read<ProductProvider>().fetchProducts();

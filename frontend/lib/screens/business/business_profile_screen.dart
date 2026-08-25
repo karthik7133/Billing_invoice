@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/indian_states.dart';
 import '../../models/business_model.dart';
 import '../../providers/business_provider.dart';
+import '../../providers/invoice_provider.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../widgets/custom_dropdown.dart';
 
@@ -38,6 +40,8 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   late TextEditingController _upiController;
 
   late TextEditingController _termsController;
+
+  bool _isUploadingLogo = false;
 
   String _selectedState = 'Andhra Pradesh';
   String _selectedStateCode = '37';
@@ -93,6 +97,144 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
     _upiController.dispose();
     _termsController.dispose();
     super.dispose();
+  }
+  /// Pick image from gallery and upload to Cloudinary, then save logo URL
+  Future<void> _pickAndUploadLogo() async {
+    // Capture ALL context-dependent refs before any await
+    final invoiceProvider = context.read<InvoiceProvider>();
+
+    final picker = ImagePicker();
+    final XFile? picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 80,
+      maxWidth: 800,
+    );
+    if (picked == null) return;
+
+    setState(() => _isUploadingLogo = true);
+
+    try {
+      final url = await invoiceProvider.uploadAttachment(picked);
+      if (url != null && mounted) {
+        setState(() => _logoController.text = url);
+        _saveProfile();
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Logo upload failed. Please try again.'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.redAccent),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isUploadingLogo = false);
+    }
+  }
+
+  Widget _buildLogoUploadSection() {
+    final logoUrl = _logoController.text.trim();
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Business Logo',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF374151)),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              GestureDetector(
+                onTap: _isUploadingLogo ? null : _pickAndUploadLogo,
+                child: Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    color: const Color(0xFFF1F5F9),
+                    border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+                    image: logoUrl.isNotEmpty && logoUrl.startsWith('http')
+                        ? DecorationImage(image: NetworkImage(logoUrl), fit: BoxFit.cover)
+                        : null,
+                  ),
+                  child: _isUploadingLogo
+                      ? const Center(
+                          child: SizedBox(
+                            width: 24, height: 24,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : (logoUrl.isEmpty || !logoUrl.startsWith('http'))
+                          ? const Icon(Icons.add_photo_alternate_outlined, size: 30, color: Color(0xFF94A3B8))
+                          : null,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _isUploadingLogo ? null : _pickAndUploadLogo,
+                        icon: Icon(
+                          _isUploadingLogo ? Icons.hourglass_top_rounded : Icons.upload_rounded,
+                          size: 16,
+                        ),
+                        label: Text(
+                          _isUploadingLogo
+                              ? 'Uploading...'
+                              : (logoUrl.isNotEmpty ? 'Change Logo' : 'Upload Logo'),
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.primary,
+                          side: const BorderSide(color: AppColors.primary),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                    ),
+                    if (logoUrl.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      SizedBox(
+                        width: double.infinity,
+                        child: TextButton.icon(
+                          onPressed: () {
+                            setState(() => _logoController.clear());
+                            _saveProfile();
+                          },
+                          icon: const Icon(Icons.delete_outline, size: 14, color: Colors.redAccent),
+                          label: const Text(
+                            'Remove Logo',
+                            style: TextStyle(fontSize: 12, color: Colors.redAccent),
+                          ),
+                          style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 4)),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Shown on home screen & all PDF invoices',
+                      style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   void _saveProfile() async {
@@ -166,13 +308,8 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
                     isRequired: true,
                     validator: (val) => val == null || val.trim().isEmpty ? 'Business name is required' : null,
                   ),
-                  const SizedBox(height: 14),
-                  CustomTextField(
-                    label: 'Logo URL (Cloudinary / Web Image)',
-                    controller: _logoController,
-                    hintText: 'https://res.cloudinary.com/...',
-                    suffixIcon: const Icon(Icons.image_outlined, color: AppColors.textMuted),
-                  ),
+                  // ─── Logo Upload Section ─────────────────────────────────────────────────
+                  _buildLogoUploadSection(),
                   const SizedBox(height: 14),
                   Row(
                     children: [

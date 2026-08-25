@@ -79,6 +79,12 @@ const InvoiceSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    companyId: {
+      type: String,
+      trim: true,
+      default: '',
+      index: true,
+    },
     invoiceNumber: {
       type: String,
       required: true,

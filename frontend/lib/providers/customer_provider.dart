@@ -16,8 +16,19 @@ class CustomerProvider with ChangeNotifier {
   String _searchQuery = '';
   bool _isInitialized = false;
 
+  /// The active company ID — set when the user switches companies
+  String _activeCompanyId = '';
+
   CustomerProvider() {
     _initFromCache();
+  }
+
+  /// Called by ManageCompaniesScreen / BusinessProvider when active company changes
+  void setActiveCompany(String companyId) {
+    _activeCompanyId = companyId;
+    _customers = [];
+    _isInitialized = false;
+    notifyListeners();
   }
 
   Future<void> _initFromCache() async {
@@ -54,7 +65,12 @@ class CustomerProvider with ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    final res = await _api.get(Endpoints.customers);
+    // Build URL with companyId query param if set
+    final url = _activeCompanyId.isNotEmpty
+        ? '${Endpoints.customers}?companyId=$_activeCompanyId'
+        : Endpoints.customers;
+
+    final res = await _api.get(url);
     _isLoading = false;
 
     if (res.success && res.data != null && res.data['customers'] != null) {
@@ -90,14 +106,21 @@ class CustomerProvider with ChangeNotifier {
 
     CustomerModel finalCustomer = newCustomer.id.isNotEmpty ? newCustomer : newCustomer.copyWith(id: _uuid.v4());
 
-    final res = await _api.post(Endpoints.customers, newCustomer.toJson());
+    // Add companyId to the payload
+    final payload = {
+      ...newCustomer.toJson(),
+      if (_activeCompanyId.isNotEmpty) 'companyId': _activeCompanyId,
+    };
+
+    final res = await _api.post(Endpoints.customers, payload);
     _isLoading = false;
 
     if (res.success && res.data != null && res.data['customer'] != null) {
       finalCustomer = CustomerModel.fromJson(res.data['customer']);
     }
 
-    final existingIdx = _customers.indexWhere((c) => c.id == finalCustomer.id || c.name.toLowerCase() == finalCustomer.name.toLowerCase());
+    final existingIdx = _customers.indexWhere(
+        (c) => c.id == finalCustomer.id || c.name.toLowerCase() == finalCustomer.name.toLowerCase());
     if (existingIdx != -1) {
       _customers[existingIdx] = finalCustomer;
     } else {
@@ -127,7 +150,11 @@ class CustomerProvider with ChangeNotifier {
     notifyListeners();
 
     if (updated.id.isNotEmpty) {
-      await _api.put('${Endpoints.customers}/${updated.id}', updated.toJson());
+      final payload = {
+        ...updated.toJson(),
+        if (_activeCompanyId.isNotEmpty) 'companyId': _activeCompanyId,
+      };
+      await _api.put('${Endpoints.customers}/${updated.id}', payload);
     }
     _isLoading = false;
 
@@ -145,7 +172,8 @@ class CustomerProvider with ChangeNotifier {
     final target = getCustomerById(id);
     final targetName = target?.name.trim().toLowerCase();
 
-    _customers.removeWhere((c) => c.id == id || (targetName != null && c.name.trim().toLowerCase() == targetName));
+    _customers.removeWhere(
+        (c) => c.id == id || (targetName != null && c.name.trim().toLowerCase() == targetName));
     await _cache.saveCustomers(_customers);
     notifyListeners();
 

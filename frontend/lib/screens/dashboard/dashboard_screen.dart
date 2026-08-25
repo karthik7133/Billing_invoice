@@ -109,42 +109,66 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // ─── 1. Header (Logo, Title, Cloud Pill, Sync, Settings) ───────────────────
+  // ─── 1. Header (Logo, Title, Cloud Pill, Sync) ─────────────────────────────
   PreferredSizeWidget _buildTopHeader(BuildContext context, String businessName) {
+    final business = context.read<BusinessProvider>().business;
+    final logoUrl = business.logo;
+
     return AppBar(
       backgroundColor: Colors.white,
       elevation: 0.5,
       leadingWidth: 44,
       leading: Padding(
         padding: const EdgeInsets.only(left: 14),
-        child: Center(
-          child: Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF2563EB), Color(0xFF1E3A8A)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+        child: GestureDetector(
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (ctx) => const BusinessProfileScreen()),
+          ),
+          child: Center(
+            child: Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                gradient: logoUrl.isEmpty
+                    ? const LinearGradient(
+                        colors: [Color(0xFF2563EB), Color(0xFF1E3A8A)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      )
+                    : null,
+                color: logoUrl.isNotEmpty ? null : null,
+                borderRadius: BorderRadius.circular(9),
+                image: logoUrl.isNotEmpty
+                    ? DecorationImage(
+                        image: NetworkImage(logoUrl),
+                        fit: BoxFit.cover,
+                      )
+                    : null,
               ),
-              borderRadius: BorderRadius.circular(9),
-            ),
-            child: Center(
-              child: Text(
-                businessName.isNotEmpty ? businessName[0].toUpperCase() : 'B',
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white),
-              ),
+              child: logoUrl.isEmpty
+                  ? Center(
+                      child: Text(
+                        businessName.isNotEmpty ? businessName[0].toUpperCase() : 'B',
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white),
+                      ),
+                    )
+                  : null,
             ),
           ),
         ),
       ),
-      title: Text(
-        businessName,
-        style: const TextStyle(
-          fontSize: 17,
-          fontWeight: FontWeight.w800,
-          color: Color(0xFF0F172A),
-          letterSpacing: -0.3,
+      title: GestureDetector(
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (ctx) => const BusinessProfileScreen()),
+        ),
+        child: Text(
+          businessName,
+          style: const TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
+            color: Color(0xFF0F172A),
+            letterSpacing: -0.3,
+          ),
         ),
       ),
       actions: [
@@ -154,15 +178,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           icon: const Icon(Icons.sync_rounded, color: Color(0xFF64748B), size: 21),
           tooltip: 'Sync with Cloud Server',
           onPressed: _loadData,
-        ),
-        IconButton(
-          icon: const Icon(Icons.settings_outlined, color: Color(0xFF64748B), size: 21),
-          tooltip: 'Business Profile',
-          onPressed: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (ctx) => const BusinessProfileScreen()),
-            );
-          },
         ),
         const SizedBox(width: 6),
       ],

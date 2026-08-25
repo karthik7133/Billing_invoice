@@ -36,8 +36,13 @@ const getNextInvoiceNumber = async (req, res) => {
 // @access  Private
 const getInvoices = async (req, res) => {
   try {
-    const { status, search, startDate, endDate, period } = req.query;
+    const { status, search, startDate, endDate, period, companyId } = req.query;
     let query = { userId: req.user._id };
+
+    // Company isolation
+    if (companyId && companyId.trim()) {
+      query.companyId = companyId.trim();
+    }
 
     // Status filter
     if (status && status !== 'ALL') {
@@ -148,6 +153,7 @@ const createInvoice = async (req, res) => {
       amountPaid = 0,
       notes,
       termsAndConditions,
+      companyId,  // ← NEW: per-company isolation
     } = req.body;
 
     if (!customerId) {
@@ -167,15 +173,19 @@ const createInvoice = async (req, res) => {
       });
     }
     
-    // If not found by ID, attempt lookup by name
+    // If not found by ID, attempt lookup by name (within same company scope)
     if (!customer && req.body.customerName) {
-      customer = await Customer.findOne({
+      const nameQuery = {
         name: { $regex: new RegExp(`^${req.body.customerName.trim()}$`, 'i') },
         userId: req.user._id,
-      });
+      };
+      if (companyId && companyId.trim()) nameQuery.companyId = companyId.trim();
+
+      customer = await Customer.findOne(nameQuery);
       if (!customer) {
         customer = await Customer.create({
           userId: req.user._id,
+          companyId: companyId ? companyId.trim() : '',
           name: req.body.customerName.trim(),
           phone: req.body.customerPhone || '',
           state: req.body.customerState || 'Andhra Pradesh',
@@ -238,6 +248,7 @@ const createInvoice = async (req, res) => {
     // Create Invoice with Immutable Snapshots
     const invoice = await Invoice.create({
       userId: req.user._id,
+      companyId: companyId ? companyId.trim() : '',
       invoiceNumber: finalInvoiceNumber,
       customerId: customer._id,
       customerSnapshot: {
