@@ -10,6 +10,8 @@ import '../../providers/customer_provider.dart';
 import '../../providers/invoice_provider.dart';
 import '../../services/pdf_invoice_service.dart';
 import '../../services/share_service.dart';
+import '../../providers/business_provider.dart';
+import '../../widgets/pdf_display_options_sheet.dart';
 import '../invoices/create_invoice_screen.dart';
 import '../invoices/invoice_detail_screen.dart';
 import '../invoices/invoice_pdf_preview_screen.dart';
@@ -729,27 +731,55 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
     );
   }
 
-  // ─── PDF Statement Sharing ────────────────────────────────────────────────
+  // ─── PDF Statement Sharing (Shows "What to display on PDF?" sheet) ───────
 
   void _sharePdfStatement(
     BuildContext context,
     CustomerModel customer,
     List<InvoiceModel> invoices,
-  ) async {
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      final bytes = await PdfInvoiceService.generatePartyStatementPdf(
-        customer: customer,
-        invoices: invoices,
-        fromDate: DateTime(DateTime.now().year, DateTime.now().month, 1),
-        toDate: DateTime.now(),
-      );
-      await ShareService.sharePdf(bytes, filename: 'Statement_${customer.name}.pdf');
-    } catch (e) {
-      messenger.showSnackBar(
-        SnackBar(content: Text('PDF error: $e'), backgroundColor: AppColors.error),
-      );
-    }
+  ) {
+    final businessProvider = Provider.of<BusinessProvider>(context, listen: false);
+    final now = DateTime.now();
+    final defaultFileName = '${customer.name.replaceAll(' ', '_').replaceAll('/', '_')}_${DateFormat('dd-MM-yyyy').format(now)}';
+
+    PdfDisplayOptionsSheet.show(
+      context,
+      defaultFileName: defaultFileName,
+      initialShowItemDetails: true,
+      initialShowDescription: false,
+      initialShowPaymentStatus: false,
+      initialShowPaymentInfo: true,
+      onApply: ({
+        required String fileName,
+        required bool showItemDetails,
+        required bool showDescription,
+        required bool showPaymentStatus,
+        required bool showPaymentInfo,
+      }) async {
+        final messenger = ScaffoldMessenger.of(context);
+        try {
+          final fromDate = DateTime(now.year, now.month, 1);
+          final toDate = now;
+          final bytes = await PdfInvoiceService.generatePartyStatementPdf(
+            customer: customer,
+            invoices: invoices,
+            fromDate: fromDate,
+            toDate: toDate,
+            business: businessProvider.business,
+            showItemDetails: showItemDetails,
+            showDescription: showDescription,
+            showPaymentStatus: showPaymentStatus,
+            showPaymentInfo: showPaymentInfo,
+          );
+          final finalName = fileName.endsWith('.pdf') ? fileName : '$fileName.pdf';
+          await ShareService.sharePdf(bytes, filename: finalName);
+        } catch (e) {
+          messenger.showSnackBar(
+            SnackBar(content: Text('PDF error: $e'), backgroundColor: AppColors.error),
+          );
+        }
+      },
+    );
   }
 
   // ─── Take Payment Dialog ──────────────────────────────────────────────────

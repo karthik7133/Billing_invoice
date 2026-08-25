@@ -7,8 +7,10 @@ import '../../core/utils/currency_formatter.dart';
 import '../../models/customer_model.dart';
 import '../../models/invoice_model.dart';
 import '../../providers/invoice_provider.dart';
+import '../../providers/business_provider.dart';
 import '../../services/pdf_invoice_service.dart';
 import '../../services/share_service.dart';
+import '../../widgets/pdf_display_options_sheet.dart';
 
 class PartyStatementScreen extends StatefulWidget {
   final CustomerModel customer;
@@ -165,75 +167,57 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
   // ─── PDF Click → directly to "What to display on PDF?" ───────────────────
 
   void _showPdfOptionsSheet(List<InvoiceModel> invoices) {
-    HapticFeedback.lightImpact();
-    // Skip intermediate PDF Options sheet — go straight to display options
-    _showPdfDisplayOptionsSheet(invoices);
-  }
+    final businessProvider = Provider.of<BusinessProvider>(context, listen: false);
+    final defaultFileName = _pdfFileName.isNotEmpty
+        ? _pdfFileName
+        : _buildDefaultFileName();
 
-  void _showPdfDisplayOptionsSheet(List<InvoiceModel> invoices) {
-    final fileNameController = TextEditingController(text: _pdfFileName);
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheetState) => _PdfDisplayOptionsSheet(
-          fileName: fileNameController.text,
-          fileNameController: fileNameController,
-          showItemDetails: _showItemDetails,
-          showDescription: _showDescription,
-          showPaymentStatus: _showPaymentStatus,
-          showPaymentInfo: _showPaymentInfo,
-          onToggle: (field, val) {
-            setSheetState(() {
-              switch (field) {
-                case 'itemDetails':
-                  _showItemDetails = val;
-                  break;
-                case 'description':
-                  _showDescription = val;
-                  break;
-                case 'paymentStatus':
-                  _showPaymentStatus = val;
-                  break;
-                case 'paymentInfo':
-                  _showPaymentInfo = val;
-                  break;
-              }
-            });
-            setState(() {});
-          },
-          onApply: () async {
-            setState(() => _pdfFileName = fileNameController.text.trim());
-            Navigator.pop(ctx);
-            // Generate and share PDF
-            try {
-              final bytes = await PdfInvoiceService.generatePartyStatementPdf(
-                customer: widget.customer,
-                invoices: invoices,
-                fromDate: _fromDate,
-                toDate: _toDate,
-                showItemDetails: _showItemDetails,
-                showDescription: _showDescription,
-                showPaymentStatus: _showPaymentStatus,
-                showPaymentInfo: _showPaymentInfo,
-              );
-              final filename = '${_pdfFileName.isNotEmpty ? _pdfFileName : _buildDefaultFileName()}.pdf';
-              await ShareService.sharePdf(bytes, filename: filename);
-            } catch (e) {
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Error generating PDF: $e'),
-                    backgroundColor: AppColors.error,
-                  ),
-                );
-              }
-            }
-          },
-          onCancel: () => Navigator.pop(ctx),
-        ),
-      ),
+    PdfDisplayOptionsSheet.show(
+      context,
+      defaultFileName: defaultFileName,
+      initialShowItemDetails: _showItemDetails,
+      initialShowDescription: _showDescription,
+      initialShowPaymentStatus: _showPaymentStatus,
+      initialShowPaymentInfo: _showPaymentInfo,
+      onApply: ({
+        required String fileName,
+        required bool showItemDetails,
+        required bool showDescription,
+        required bool showPaymentStatus,
+        required bool showPaymentInfo,
+      }) async {
+        setState(() {
+          _pdfFileName = fileName;
+          _showItemDetails = showItemDetails;
+          _showDescription = showDescription;
+          _showPaymentStatus = showPaymentStatus;
+          _showPaymentInfo = showPaymentInfo;
+        });
+
+        final messenger = ScaffoldMessenger.of(context);
+        try {
+          final bytes = await PdfInvoiceService.generatePartyStatementPdf(
+            customer: widget.customer,
+            invoices: invoices,
+            fromDate: _fromDate,
+            toDate: _toDate,
+            business: businessProvider.business,
+            showItemDetails: showItemDetails,
+            showDescription: showDescription,
+            showPaymentStatus: showPaymentStatus,
+            showPaymentInfo: showPaymentInfo,
+          );
+          final finalName = fileName.endsWith('.pdf') ? fileName : '$fileName.pdf';
+          await ShareService.sharePdf(bytes, filename: finalName);
+        } catch (e) {
+          messenger.showSnackBar(
+            SnackBar(
+              content: Text('Error generating PDF: $e'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+      },
     );
   }
 
@@ -635,238 +619,6 @@ class _StatementRow {
 }
 
 
-// ─── PDF Display Options Sheet ────────────────────────────────────────────────
-
-class _PdfDisplayOptionsSheet extends StatefulWidget {
-  final String fileName;
-  final TextEditingController fileNameController;
-  final bool showItemDetails;
-  final bool showDescription;
-  final bool showPaymentStatus;
-  final bool showPaymentInfo;
-  final void Function(String field, bool val) onToggle;
-  final VoidCallback onApply;
-  final VoidCallback onCancel;
-
-  const _PdfDisplayOptionsSheet({
-    required this.fileName,
-    required this.fileNameController,
-    required this.showItemDetails,
-    required this.showDescription,
-    required this.showPaymentStatus,
-    required this.showPaymentInfo,
-    required this.onToggle,
-    required this.onApply,
-    required this.onCancel,
-  });
-
-  @override
-  State<_PdfDisplayOptionsSheet> createState() => _PdfDisplayOptionsSheetState();
-}
-
-class _PdfDisplayOptionsSheetState extends State<_PdfDisplayOptionsSheet> {
-  late bool _showItemDetails;
-  late bool _showDescription;
-  late bool _showPaymentStatus;
-  late bool _showPaymentInfo;
-  bool _editingName = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _showItemDetails = widget.showItemDetails;
-    _showDescription = widget.showDescription;
-    _showPaymentStatus = widget.showPaymentStatus;
-    _showPaymentInfo = widget.showPaymentInfo;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Handle
-              Center(
-                child: Container(
-                  width: 40, height: 4,
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(color: const Color(0xFFE2E8F0), borderRadius: BorderRadius.circular(2)),
-                ),
-              ),
-              // Header
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'What to display on PDF?',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
-                  ),
-                  IconButton(
-                    onPressed: widget.onCancel,
-                    icon: const Icon(Icons.close, color: Color(0xFF64748B)),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // Filename row
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _editingName
-                          ? TextField(
-                              controller: widget.fileNameController,
-                              autofocus: true,
-                              style: const TextStyle(fontSize: 13, color: Color(0xFF1E293B)),
-                              decoration: const InputDecoration(
-                                isDense: true,
-                                border: InputBorder.none,
-                                contentPadding: EdgeInsets.zero,
-                              ),
-                              onSubmitted: (_) => setState(() => _editingName = false),
-                            )
-                          : Text(
-                              widget.fileNameController.text,
-                              style: const TextStyle(fontSize: 13, color: Color(0xFF374151)),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                    ),
-                    GestureDetector(
-                      onTap: () => setState(() => _editingName = !_editingName),
-                      child: Text(
-                        _editingName ? 'Done' : 'Edit Name',
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF2563EB)),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Checkboxes
-              _DisplayOption(
-                label: 'Item Details',
-                value: _showItemDetails,
-                onChanged: (v) {
-                  setState(() => _showItemDetails = v);
-                  widget.onToggle('itemDetails', v);
-                },
-              ),
-              _DisplayOption(
-                label: 'Description',
-                value: _showDescription,
-                onChanged: (v) {
-                  setState(() => _showDescription = v);
-                  widget.onToggle('description', v);
-                },
-              ),
-              _DisplayOption(
-                label: 'Payment status',
-                value: _showPaymentStatus,
-                onChanged: (v) {
-                  setState(() => _showPaymentStatus = v);
-                  widget.onToggle('paymentStatus', v);
-                },
-              ),
-              _DisplayOption(
-                label: 'Payment Information',
-                value: _showPaymentInfo,
-                onChanged: (v) {
-                  setState(() => _showPaymentInfo = v);
-                  widget.onToggle('paymentInfo', v);
-                },
-              ),
-
-              const SizedBox(height: 20),
-
-              // Action buttons
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: widget.onCancel,
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        side: const BorderSide(color: Color(0xFFE2E8F0)),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                      ),
-                      child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: widget.onApply,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFDC2626),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                        elevation: 0,
-                      ),
-                      child: const Text('Apply', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _DisplayOption extends StatelessWidget {
-  final String label;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  const _DisplayOption({required this.label, required this.value, required this.onChanged});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () => onChanged(!value),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(label, style: const TextStyle(fontSize: 15, color: Color(0xFF1E293B), fontWeight: FontWeight.w500)),
-            Checkbox(
-              value: value,
-              onChanged: (v) => onChanged(v ?? false),
-              activeColor: const Color(0xFF2563EB),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 // ─── AppBar Icon Button ────────────────────────────────────────────────────────
 
