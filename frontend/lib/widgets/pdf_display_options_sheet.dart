@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'pdf_progress_dialog.dart';
 
 class PdfDisplayOptionsSheet extends StatefulWidget {
   final String defaultFileName;
@@ -254,13 +255,20 @@ class _PdfDisplayOptionsSheetState extends State<PdfDisplayOptionsSheet> {
                                     ? _fileNameController.text.trim()
                                     : widget.defaultFileName;
                                 Navigator.pop(context);
-                                await widget.onApply(
-                                  fileName: name,
-                                  showItemDetails: _showItemDetails,
-                                  showDescription: _showDescription,
-                                  showPaymentStatus: _showPaymentStatus,
-                                  showPaymentInfo: _showPaymentInfo,
-                                );
+                                
+                                // Show loading progress overlay on screen
+                                PdfProgressDialog.show(context, message: 'Preparing Statement PDF...');
+                                try {
+                                  await widget.onApply(
+                                    fileName: name,
+                                    showItemDetails: _showItemDetails,
+                                    showDescription: _showDescription,
+                                    showPaymentStatus: _showPaymentStatus,
+                                    showPaymentInfo: _showPaymentInfo,
+                                  );
+                                } finally {
+                                  PdfProgressDialog.hide();
+                                }
                               },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFFDC2626),

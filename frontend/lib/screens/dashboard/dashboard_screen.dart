@@ -14,6 +14,7 @@ import '../../services/backend_sync_service.dart';
 import '../../services/pdf_invoice_service.dart';
 import '../../services/share_service.dart';
 import '../../widgets/cloud_server_status_pill.dart';
+import '../../widgets/pdf_progress_dialog.dart';
 import '../business/business_profile_screen.dart';
 import '../customers/add_edit_customer_screen.dart';
 import '../customers/party_details_screen.dart';
@@ -877,8 +878,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         IconButton(
                           icon: const Icon(Icons.share_outlined, size: 20, color: Color(0xFF64748B)),
                           onPressed: () async {
-                            final bytes = await PdfInvoiceService.generateTaxInvoicePdf(inv);
-                            await ShareService.sharePdf(bytes, filename: 'Invoice_${inv.invoiceNumber}.pdf');
+                            PdfProgressDialog.show(context, message: 'Preparing Invoice PDF...');
+                            try {
+                              final bytes = await PdfInvoiceService.generateTaxInvoicePdf(inv);
+                              await ShareService.sharePdf(bytes, filename: 'Invoice_${inv.invoiceNumber}.pdf');
+                            } finally {
+                              PdfProgressDialog.hide();
+                            }
                           },
                           tooltip: 'Share',
                         ),
