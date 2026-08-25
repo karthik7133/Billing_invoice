@@ -5,6 +5,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../models/invoice_model.dart';
+import '../models/customer_model.dart';
 import '../core/utils/currency_formatter.dart';
 
 class PdfInvoiceService {
@@ -527,4 +528,199 @@ class PdfInvoiceService {
       ),
     );
   }
+
+  // ─── Party Statement PDF ──────────────────────────────────────────────────
+
+  static Future<Uint8List> generatePartyStatementPdf({
+    required CustomerModel customer,
+    required List<InvoiceModel> invoices,
+    required DateTime fromDate,
+    required DateTime toDate,
+    bool showItemDetails = true,
+    bool showDescription = false,
+    bool showPaymentStatus = false,
+    bool showPaymentInfo = true,
+  }) async {
+    final pdf = pw.Document();
+    final fontRegular = await PdfGoogleFonts.notoSansRegular();
+    final fontBold = await PdfGoogleFonts.notoSansBold();
+
+    final dfmt = DateFormat('dd/MM/yyyy');
+    final dfmtShort = DateFormat('dd MMM yy');
+
+    double balance = 0.0;
+    // Build ledger rows
+    final rows = <Map<String, String>>[];
+    for (final inv in invoices) {
+      balance += inv.grandTotal;
+      rows.add({
+        'date': dfmtShort.format(inv.invoiceDate),
+        'type': 'Purchase',
+        'ref': inv.invoiceNumber,
+        'amount': CurrencyFormatter.format(inv.grandTotal, showSymbol: false),
+        'balance': CurrencyFormatter.format(balance, showSymbol: false),
+      });
+      if (inv.amountPaid > 0) {
+        balance -= inv.amountPaid;
+        rows.add({
+          'date': dfmtShort.format(inv.invoiceDate),
+          'type': 'Payment',
+          'ref': inv.invoiceNumber,
+          'amount': '-${CurrencyFormatter.format(inv.amountPaid, showSymbol: false)}',
+          'balance': CurrencyFormatter.format(balance, showSymbol: false),
+        });
+      }
+    }
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        theme: pw.ThemeData.withFont(base: fontRegular, bold: fontBold),
+        build: (ctx) => [
+          // Header
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(
+                'PARTY STATEMENT',
+                style: pw.TextStyle(font: fontBold, fontSize: 18, color: PdfColor.fromHex('#1E293B')),
+              ),
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.end,
+                children: [
+                  pw.Text('Period: ${dfmt.format(fromDate)} – ${dfmt.format(toDate)}',
+                      style: pw.TextStyle(font: fontRegular, fontSize: 9)),
+                ],
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 6),
+          pw.Divider(color: PdfColor.fromHex('#2563EB'), thickness: 1.5),
+          pw.SizedBox(height: 8),
+          // Customer info
+          pw.Container(
+            padding: const pw.EdgeInsets.all(10),
+            decoration: pw.BoxDecoration(
+              color: PdfColor.fromHex('#EFF6FF'),
+              borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+            ),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(customer.name, style: pw.TextStyle(font: fontBold, fontSize: 14)),
+                if (customer.phone.isNotEmpty)
+                  pw.Text('Phone: ${customer.phone}', style: pw.TextStyle(font: fontRegular, fontSize: 9)),
+                if (customer.gstin.isNotEmpty)
+                  pw.Text('GSTIN: ${customer.gstin}', style: pw.TextStyle(font: fontRegular, fontSize: 9)),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 14),
+          // Table
+          pw.Table(
+            columnWidths: {
+              0: const pw.FixedColumnWidth(55),
+              1: const pw.FlexColumnWidth(2),
+              2: const pw.FlexColumnWidth(2.5),
+              3: const pw.FixedColumnWidth(75),
+              4: const pw.FixedColumnWidth(75),
+            },
+            children: [
+              pw.TableRow(
+                decoration: pw.BoxDecoration(color: PdfColor.fromHex('#1E3A8A')),
+                children: [
+                  _stmtHeader('Date', fontBold),
+                  _stmtHeader('Type', fontBold),
+                  _stmtHeader('Reference', fontBold),
+                  _stmtHeader('Amount (₹)', fontBold, align: pw.TextAlign.right),
+                  _stmtHeader('Balance (₹)', fontBold, align: pw.TextAlign.right),
+                ],
+              ),
+              // Opening row
+              pw.TableRow(
+                children: [
+                  _stmtCell(dfmtShort.format(fromDate), fontRegular),
+                  _stmtCell('Opening', fontRegular),
+                  _stmtCell('-', fontRegular),
+                  _stmtCell('0.00', fontRegular, align: pw.TextAlign.right),
+                  _stmtCell('0.00', fontRegular, align: pw.TextAlign.right, color: PdfColor.fromHex('#16A34A')),
+                ],
+              ),
+              ...rows.asMap().entries.map((e) {
+                final r = e.value;
+                final isPayment = r['type'] == 'Payment';
+                final amtColor = isPayment ? PdfColor.fromHex('#16A34A') : PdfColor.fromHex('#1A1A1A');
+                return pw.TableRow(
+                  decoration: e.key.isEven ? null : pw.BoxDecoration(color: PdfColor.fromHex('#F8FAFC')),
+                  children: [
+                    _stmtCell(r['date']!, fontRegular),
+                    _stmtCell(r['type']!, fontRegular, isBold: true, font: fontBold),
+                    _stmtCell(r['ref']!, fontRegular),
+                    _stmtCell(r['amount']!, fontRegular, align: pw.TextAlign.right, color: amtColor),
+                    _stmtCell(r['balance']!, fontRegular, align: pw.TextAlign.right),
+                  ],
+                );
+              }),
+            ],
+          ),
+          pw.SizedBox(height: 14),
+          // Closing balance
+          pw.Container(
+            padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: pw.BoxDecoration(
+              color: PdfColor.fromHex('#FEF2F2'),
+              borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+              border: pw.Border.all(color: PdfColor.fromHex('#FECACA')),
+            ),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text('Closing Balance', style: pw.TextStyle(font: fontBold, fontSize: 11)),
+                pw.Text(
+                  '₹ ${CurrencyFormatter.format(balance, showSymbol: false)}',
+                  style: pw.TextStyle(font: fontBold, fontSize: 12, color: PdfColor.fromHex('#DC2626')),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return pdf.save();
+  }
+
+  static pw.Widget _stmtHeader(String text, pw.Font font, {pw.TextAlign align = pw.TextAlign.left}) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 5, horizontal: 6),
+      child: pw.Text(
+        text,
+        textAlign: align,
+        style: pw.TextStyle(font: font, fontSize: 9.5, color: PdfColors.white),
+      ),
+    );
+  }
+
+  static pw.Widget _stmtCell(
+    String text,
+    pw.Font fontRegular, {
+    pw.TextAlign align = pw.TextAlign.left,
+    PdfColor? color,
+    bool isBold = false,
+    pw.Font? font,
+  }) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 5, horizontal: 6),
+      child: pw.Text(
+        text,
+        textAlign: align,
+        style: pw.TextStyle(
+          font: isBold ? font : fontRegular,
+          fontSize: 9.5,
+          color: color ?? PdfColor.fromHex('#1A1A1A'),
+        ),
+      ),
+    );
+  }
 }
+

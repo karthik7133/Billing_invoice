@@ -16,6 +16,7 @@ import '../products/product_list_screen.dart';
 import '../business/business_profile_screen.dart';
 import '../invoices/invoice_history_screen.dart';
 import '../invoices/create_invoice_screen.dart';
+import '../customers/customer_list_screen.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({super.key});
@@ -88,20 +89,106 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         onTap: (index) {
           setState(() => _currentIndex = index);
         },
+        onAddTap: () => _showAddActionSheet(context),
+      ),
+    );
+  }
+
+  void _showAddActionSheet(BuildContext context) {
+    HapticFeedback.mediumImpact();
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      backgroundColor: Colors.white,
+      builder: (ctx) => SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE2E8F0),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Create New',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                leading: Container(
+                  width: 44, height: 44,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.receipt_outlined, color: Color(0xFF2563EB), size: 22),
+                ),
+                title: const Text('Sale Invoice', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF1E293B))),
+                subtitle: const Text('Create a GST tax invoice', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                trailing: const Icon(Icons.chevron_right, color: Color(0xFF94A3B8)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const CreateInvoiceScreen()),
+                  );
+                },
+              ),
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                leading: Container(
+                  width: 44, height: 44,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF7ED),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.shopping_cart_outlined, color: Color(0xFFEA580C), size: 22),
+                ),
+                title: const Text('Purchase Transaction', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF1E293B))),
+                subtitle: const Text('Record a purchase from a party', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                trailing: const Icon(Icons.chevron_right, color: Color(0xFF94A3B8)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const CustomerListScreen()),
+                  );
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
       ),
     );
   }
 }
 
-// ─── 4-Tab Bottom Navigation Bar ─────────────────────────────────────────────
+// ─── 5-Tab Bottom Navigation Bar with Centre + Button ────────────────────────
 
 class _VyaparBottomNav extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
+  final VoidCallback onAddTap;
 
   const _VyaparBottomNav({
     required this.currentIndex,
     required this.onTap,
+    required this.onAddTap,
   });
 
   @override
@@ -121,7 +208,7 @@ class _VyaparBottomNav extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
           child: Row(
             children: [
               _NavItem(
@@ -139,6 +226,33 @@ class _VyaparBottomNav extends StatelessWidget {
                 activeIcon: Icons.bar_chart_rounded,
                 label: 'ANALYTICS',
                 onTap: onTap,
+              ),
+              // Centre + FAB
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: GestureDetector(
+                  onTap: onAddTap,
+                  child: Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF2563EB), Color(0xFF1D4ED8)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF2563EB).withValues(alpha: 0.35),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(Icons.add, color: Colors.white, size: 26),
+                  ),
+                ),
               ),
               _NavItem(
                 index: 2,

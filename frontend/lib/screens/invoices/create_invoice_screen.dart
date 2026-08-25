@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
@@ -86,6 +87,9 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
   bool _isReceivedChecked = false;
   bool _termsExpanded = false;
   String _termsAndConditions = '';
+
+  // Invoice number prefix — 'NO' means no prefix
+  String _invoicePrefix = 'NO';
 
   final List<_SaleItemDraft> _items = [];
   final List<XFile> _attachedImages = [];
@@ -312,6 +316,180 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     );
   }
 
+  // ─── Invoice Number helpers ───────────────────────────────────────────────
+
+  String _buildDisplayInvoiceNo() {
+    final num = _invoiceNoController.text.trim();
+    if (_invoicePrefix == 'NO' || _invoicePrefix.isEmpty) {
+      return num.isEmpty ? '–' : num;
+    }
+    return num.isEmpty ? _invoicePrefix : '$_invoicePrefix-$num';
+  }
+
+  String _buildFinalInvoiceNo() {
+    final num = _invoiceNoController.text.trim();
+    if (_invoicePrefix == 'NO' || _invoicePrefix.isEmpty) {
+      return num;
+    }
+    return num.isEmpty ? _invoicePrefix : '$_invoicePrefix-$num';
+  }
+
+  void _showInvoiceNumberSheet() {
+    HapticFeedback.lightImpact();
+
+    final prefixOptions = ['NO', 'N', 'AP', 'ORS', 'ORS/LT', 'INV', 'BILL', 'GEN'];
+    String tempPrefix = _invoicePrefix;
+    final tempNumberCtrl = TextEditingController(text: _invoiceNoController.text);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Handle
+                    Center(
+                      child: Container(
+                        width: 40, height: 4,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE2E8F0),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    // Header
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Change Invoice No.',
+                          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          icon: const Icon(Icons.close, color: Color(0xFF64748B)),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    // Invoice Prefix label
+                    const Text(
+                      'Invoice Prefix',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                    ),
+                    const SizedBox(height: 10),
+                    // Scrollable prefix chips row
+                    SizedBox(
+                      height: 40,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: prefixOptions.length,
+                        separatorBuilder: (context, index) => const SizedBox(width: 8),
+                        itemBuilder: (ctx, i) {
+                          final opt = prefixOptions[i];
+                          final isSelected = tempPrefix == opt;
+                          return GestureDetector(
+                            onTap: () => setSheet(() => tempPrefix = opt),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 150),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFF1F5F9),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0),
+                                  width: 1.5,
+                                ),
+                              ),
+                              child: Text(
+                                opt,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: isSelected ? Colors.white : const Color(0xFF374151),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    // Invoice No. input
+                    Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: const Color(0xFF2563EB), width: 1.5),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: TextField(
+                        controller: tempNumberCtrl,
+                        autofocus: true,
+                        keyboardType: TextInputType.text,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF1E293B),
+                        ),
+                        decoration: const InputDecoration(
+                          labelText: 'Invoice No.',
+                          labelStyle: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          border: InputBorder.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    // SAVE button
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          setState(() {
+                            _invoicePrefix = tempPrefix;
+                            _invoiceNoController.text = tempNumberCtrl.text.trim();
+                          });
+                          Navigator.pop(ctx);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF2563EB),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          elevation: 0,
+                        ),
+                        child: const Text(
+                          'SAVE',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: 0.5),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _saveSale() async {
     final name = _customerNameController.text.trim();
     if (name.isEmpty) {
@@ -385,7 +563,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
       customer: customer,
       business: busProvider.business,
       rawItems: rawItems,
-      invoiceNumber: _invoiceNoController.text.trim(),
+      invoiceNumber: _buildFinalInvoiceNo(),
       invoiceDate: _invoiceDate,
       origin: _selectedOrigin,
       attachments: uploadedUrls,
@@ -473,28 +651,33 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
               ),
               child: Row(
                 children: [
-                  // Invoice No (Editable at any time)
+                  // Invoice No (Tappable → opens prefix+number sheet)
                   Expanded(
                     flex: 4,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Invoice No.',
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
-                        ),
-                        const SizedBox(height: 2),
-                        TextField(
-                          controller: _invoiceNoController,
-                          style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
-                          decoration: const InputDecoration(
-                            isDense: true,
-                            border: InputBorder.none,
-                            contentPadding: EdgeInsets.zero,
-                            hintText: 'e.g. 101',
+                    child: GestureDetector(
+                      onTap: () => _showInvoiceNumberSheet(),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Invoice No.',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  _buildDisplayInvoiceNo(),
+                                  style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const Icon(Icons.edit_outlined, size: 14, color: Color(0xFF2563EB)),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   Container(height: 30, width: 1, color: const Color(0xFFE2E8F0)),
