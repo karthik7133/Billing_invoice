@@ -21,8 +21,11 @@ import '../invoices/invoice_history_screen.dart';
 import '../invoices/create_invoice_screen.dart';
 import '../customers/customer_list_screen.dart';
 
+/// Global key exposing tab-switching capability to nested screens (e.g. ManageCompaniesScreen)
+final mainNavigationKey = GlobalKey<_MainNavigationScreenState>();
+
 class MainNavigationScreen extends StatefulWidget {
-  const MainNavigationScreen({super.key});
+  const MainNavigationScreen({super.key}) : super();
 
   @override
   State<MainNavigationScreen> createState() => _MainNavigationScreenState();
@@ -64,6 +67,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       productProvider: prodP,
       invoiceProvider: invP,
     );
+  }
+
+  /// Called by ManageCompaniesScreen after a company switch to jump to the Home tab
+  void switchToHomeTab() {
+    if (mounted) {
+      setState(() => _currentIndex = 0);
+    }
   }
 
   @override

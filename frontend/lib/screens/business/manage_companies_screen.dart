@@ -10,6 +10,7 @@ import '../../providers/customer_provider.dart';
 import '../../providers/invoice_provider.dart';
 import '../../providers/product_provider.dart';
 import '../../services/backend_sync_service.dart';
+import '../../main.dart' show mainNavigationKey;
 import 'business_profile_screen.dart';
 
 class ManageCompaniesScreen extends StatefulWidget {
@@ -347,23 +348,22 @@ class _ManageCompaniesScreenState extends State<ManageCompaniesScreen>
 
     return GestureDetector(
       onTap: () async {
-        if (!isCurrent) {
-          HapticFeedback.mediumImpact();
-          await businessProvider.switchToCompany(company.id);
-          // Refresh customer and invoice providers for new company
-          if (context.mounted) {
-            context.read<CustomerProvider>().fetchCustomers();
-            context.read<InvoiceProvider>().fetchInvoices();
-            context.read<ProductProvider>().fetchProducts();
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Switched to ${company.businessName}'),
-                behavior: SnackBarBehavior.floating,
-                backgroundColor: AppColors.success,
-              ),
-            );
-          }
-        }
+        HapticFeedback.mediumImpact();
+        // Switch to this company in state + cache
+        await businessProvider.switchToCompany(company.id);
+
+        if (!context.mounted) return;
+
+        // Refresh all providers with new company context
+        context.read<CustomerProvider>().fetchCustomers();
+        context.read<InvoiceProvider>().fetchInvoices();
+        context.read<ProductProvider>().fetchProducts();
+
+        // Jump the root bottom nav to the Home (Dashboard) tab
+        mainNavigationKey.currentState?.switchToHomeTab();
+
+        // Pop all pushed routes back to MainNavigationScreen (root)
+        Navigator.of(context).popUntil((route) => route.isFirst);
       },
       child: Container(
         padding: const EdgeInsets.all(16),
@@ -431,11 +431,19 @@ class _ManageCompaniesScreenState extends State<ManageCompaniesScreen>
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  onSelected: (val) {
+                  onSelected: (val) async {
                     if (val == 'switch') {
-                      businessProvider.switchToCompany(company.id);
+                      HapticFeedback.mediumImpact();
+                      await businessProvider.switchToCompany(company.id);
+                      if (!context.mounted) return;
+                      context.read<CustomerProvider>().fetchCustomers();
+                      context.read<InvoiceProvider>().fetchInvoices();
+                      context.read<ProductProvider>().fetchProducts();
+                      mainNavigationKey.currentState?.switchToHomeTab();
+                      Navigator.of(context).popUntil((route) => route.isFirst);
                     } else if (val == 'edit') {
-                      businessProvider.switchToCompany(company.id);
+                      await businessProvider.switchToCompany(company.id);
+                      if (!context.mounted) return;
                       Navigator.of(context).push(
                         MaterialPageRoute(builder: (_) => const BusinessProfileScreen()),
                       );
@@ -521,22 +529,48 @@ class _ManageCompaniesScreenState extends State<ManageCompaniesScreen>
 
             const SizedBox(height: 10),
 
-            // Sync Status Pill Badge
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3.5),
-              decoration: BoxDecoration(
-                color: company.syncOn ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                company.syncOn ? 'SYNC ON' : 'SYNC OFF',
-                style: TextStyle(
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w800,
-                  color: company.syncOn ? const Color(0xFF16A34A) : const Color(0xFF94A3B8),
-                  letterSpacing: 0.5,
+            // Sync Badge + Navigation Hint Row
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // Sync Status Pill Badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3.5),
+                  decoration: BoxDecoration(
+                    color: company.syncOn ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    company.syncOn ? 'SYNC ON' : 'SYNC OFF',
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w800,
+                      color: company.syncOn ? const Color(0xFF16A34A) : const Color(0xFF94A3B8),
+                      letterSpacing: 0.5,
+                    ),
+                  ),
                 ),
-              ),
+
+                // Tap hint
+                Row(
+                  children: [
+                    Text(
+                      isCurrent ? 'Go to Dashboard' : 'Tap to switch',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: isCurrent ? const Color(0xFF2563EB) : const Color(0xFF64748B),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      Icons.arrow_forward_ios_rounded,
+                      size: 10,
+                      color: isCurrent ? const Color(0xFF2563EB) : const Color(0xFF94A3B8),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ],
         ),

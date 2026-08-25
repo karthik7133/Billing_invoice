@@ -13,6 +13,7 @@ import 'services/backend_sync_service.dart';
 import 'screens/onboarding/onboarding_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/dashboard/main_navigation_screen.dart';
+export 'screens/dashboard/main_navigation_screen.dart' show mainNavigationKey;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -59,7 +60,7 @@ class _AppRouter extends StatelessWidget {
     }
 
     if (auth.isAuthenticated) {
-      return const MainNavigationScreen();
+      return MainNavigationScreen(key: mainNavigationKey);
     }
 
     return const _OnboardingOrLogin();
