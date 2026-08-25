@@ -1,5 +1,30 @@
 const Customer = require('../models/Customer');
 const Invoice = require('../models/Invoice');
+const Business = require('../models/Business');
+
+// Helper to build isolated company filter
+const buildCompanyFilter = async (userId, companyId) => {
+  const primaryBusiness = await Business.findOne({ userId });
+  const primaryId = primaryBusiness ? primaryBusiness._id.toString() : null;
+
+  const cid = (companyId || '').trim();
+  const isPrimary = !cid || cid === 'comp_1' || cid === 'primary' || (primaryId && cid === primaryId);
+
+  if (isPrimary) {
+    const orList = [
+      { companyId: 'comp_1' },
+      { companyId: '' },
+      { companyId: null },
+      { companyId: { $exists: false } },
+    ];
+    if (primaryId) {
+      orList.push({ companyId: primaryId });
+    }
+    return { $or: orList };
+  } else {
+    return { companyId: cid };
+  }
+};
 
 // @desc    Get all customers for current user with balance calculation
 // @route   GET /api/customers
@@ -7,46 +32,27 @@ const Invoice = require('../models/Invoice');
 const getCustomers = async (req, res) => {
   try {
     const { search, customerType, companyId } = req.query;
-    let query = { userId: req.user._id };
+    const andConditions = [{ userId: req.user._id }];
 
-    // Company isolation — include records belonging to this company OR untagged legacy records.
-    // Untagged records (companyId empty/null) were created before multi-company support
-    // and are shown for ALL companies until they are re-saved with a companyId.
-    if (companyId && companyId.trim()) {
-      const cid = companyId.trim();
-      const companyFilter = [
-        { companyId: cid },
-        { companyId: { $exists: false } },
-        { companyId: '' },
-        { companyId: null },
-      ];
-      // If a search filter is also present, combine via $and
-      if (search) {
-        query.$and = [
-          { $or: companyFilter },
-          {
-            $or: [
-              { name: { $regex: search, $options: 'i' } },
-              { phone: { $regex: search, $options: 'i' } },
-              { gstin: { $regex: search, $options: 'i' } },
-            ],
-          },
-        ];
-      } else {
-        query.$or = companyFilter;
-      }
-    } else if (search) {
-      query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { phone: { $regex: search, $options: 'i' } },
-        { gstin: { $regex: search, $options: 'i' } },
-      ];
+    // Company isolation filter
+    const companyFilter = await buildCompanyFilter(req.user._id, companyId);
+    andConditions.push(companyFilter);
+
+    if (search) {
+      andConditions.push({
+        $or: [
+          { name: { $regex: search, $options: 'i' } },
+          { phone: { $regex: search, $options: 'i' } },
+          { gstin: { $regex: search, $options: 'i' } },
+        ],
+      });
     }
 
     if (customerType) {
-      query.customerType = customerType;
+      andConditions.push({ customerType });
     }
 
+    const query = andConditions.length > 1 ? { $and: andConditions } : andConditions[0];
     const customers = await Customer.find(query).sort({ createdAt: -1 }).lean();
 
     // Deduplicate within the same company scope only
@@ -68,18 +74,12 @@ const getCustomers = async (req, res) => {
       Customer.deleteMany({ _id: { $in: duplicateIds }, userId: req.user._id }).exec().catch(() => {});
     }
 
-    // Aggregate balances from Invoices (include untagged legacy invoices)
+    // Aggregate balances from Invoices (scoped to same company filter)
     const customerIds = uniqueCustomers.map((c) => c._id);
-    const invoiceMatchQuery = { customerId: { $in: customerIds } };
-    if (companyId && companyId.trim()) {
-      const cid = companyId.trim();
-      invoiceMatchQuery.$or = [
-        { companyId: cid },
-        { companyId: { $exists: false } },
-        { companyId: '' },
-        { companyId: null },
-      ];
-    }
+    const invoiceMatchQuery = {
+      customerId: { $in: customerIds },
+      ...companyFilter,
+    };
 
     const invoiceAgg = await Invoice.aggregate([
       { $match: invoiceMatchQuery },
@@ -134,10 +134,8 @@ const getCustomerById = async (req, res) => {
     }
 
     // Fetch invoices scoped to the same company
-    const invoiceQuery = { customerId: customer._id, userId: req.user._id };
-    if (companyId && companyId.trim()) {
-      invoiceQuery.companyId = companyId.trim();
-    }
+    const companyFilter = await buildCompanyFilter(req.user._id, companyId);
+    const invoiceQuery = { customerId: customer._id, userId: req.user._id, ...companyFilter };
 
     const invoices = await Invoice.find(invoiceQuery).sort({ invoiceDate: -1, createdAt: -1 });
 
@@ -172,7 +170,7 @@ const createCustomer = async (req, res) => {
       openingBalance,
       partyType,
       customerType,
-      companyId,  // ← NEW
+      companyId,
     } = req.body;
 
     if (!name || !name.trim()) {
@@ -180,18 +178,15 @@ const createCustomer = async (req, res) => {
     }
 
     const trimmedName = name.trim();
-    const companyScope = companyId ? companyId.trim() : '';
+    const companyScope = (companyId || '').trim() || 'comp_1';
+    const companyFilter = await buildCompanyFilter(req.user._id, companyScope);
 
     // Check if customer exists within the same company scope
-    const existingQuery = {
+    let customer = await Customer.findOne({
       userId: req.user._id,
       name: { $regex: new RegExp(`^${trimmedName.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}$`, 'i') },
-    };
-    if (companyScope) {
-      existingQuery.companyId = companyScope;
-    }
-
-    let customer = await Customer.findOne(existingQuery);
+      ...companyFilter,
+    });
 
     if (customer) {
       if (phone && !customer.phone) customer.phone = phone;

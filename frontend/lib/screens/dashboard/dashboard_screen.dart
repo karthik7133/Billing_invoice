@@ -72,17 +72,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       productProvider: prodP,
       invoiceProvider: invP,
     );
-
-    // After fetchBusinessProfile completes, the business.id may have been
-    // updated to the real MongoDB _id. Re-sync the company scope with that ID.
-    if (!mounted) return;
-    final realId = busP.activeCompanyId;
-    if (realId.isNotEmpty && realId != activeId) {
-      custP.setActiveCompany(realId);
-      invP.setActiveCompany(realId);
-      custP.fetchCustomers();
-      invP.fetchInvoices();
-    }
   }
 
   @override

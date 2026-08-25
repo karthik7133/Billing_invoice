@@ -155,17 +155,14 @@ class BackendSyncService with ChangeNotifier {
   }) async {
     try {
       // ── Step 1: Fetch business profile FIRST ─────────────────────────────────
-      // We need the real MongoDB business._id before fetching customers/invoices
-      // so the companyId filter is correct. Use onIdResolved to handle ID changes
-      // (e.g. local seed ID 'comp_1' → real MongoDB ObjectId).
       if (businessProvider != null) {
-        await businessProvider.fetchBusinessProfile(
-          onIdResolved: (realId) {
-            // The real MongoDB ID just came back — update providers immediately
-            customerProvider?.setActiveCompany(realId);
-            invoiceProvider?.setActiveCompany(realId);
-          },
-        );
+        await businessProvider.fetchBusinessProfile();
+        // Guarantee customer & invoice providers are scoped to current active company
+        final activeId = businessProvider.activeCompanyId;
+        if (activeId.isNotEmpty) {
+          customerProvider?.setActiveCompany(activeId);
+          invoiceProvider?.setActiveCompany(activeId);
+        }
       }
       // ─────────────────────────────────────────────────────────────────────────
 

@@ -10,6 +10,30 @@ const formatInvoiceNumber = (prefix = 'INV', num = 1) => {
   return `${prefix}-${String(num).padStart(4, '0')}`;
 };
 
+// Helper to build isolated company filter
+const buildCompanyFilter = async (userId, companyId) => {
+  const primaryBusiness = await Business.findOne({ userId });
+  const primaryId = primaryBusiness ? primaryBusiness._id.toString() : null;
+
+  const cid = (companyId || '').trim();
+  const isPrimary = !cid || cid === 'comp_1' || cid === 'primary' || (primaryId && cid === primaryId);
+
+  if (isPrimary) {
+    const orList = [
+      { companyId: 'comp_1' },
+      { companyId: '' },
+      { companyId: null },
+      { companyId: { $exists: false } },
+    ];
+    if (primaryId) {
+      orList.push({ companyId: primaryId });
+    }
+    return { $or: orList };
+  } else {
+    return { companyId: cid };
+  }
+};
+
 // @desc    Get next invoice number preview
 // @route   GET /api/invoices/next-number
 // @access  Private
@@ -37,25 +61,18 @@ const getNextInvoiceNumber = async (req, res) => {
 const getInvoices = async (req, res) => {
   try {
     const { status, search, startDate, endDate, period, companyId } = req.query;
-    let query = { userId: req.user._id };
+    const andConditions = [{ userId: req.user._id }];
 
-    // Company isolation — include records belonging to this company OR untagged legacy records
-    if (companyId && companyId.trim()) {
-      const cid = companyId.trim();
-      query.$or = [
-        { companyId: cid },
-        { companyId: { $exists: false } },
-        { companyId: '' },
-        { companyId: null },
-      ];
-    }
+    // Company isolation filter
+    const companyFilter = await buildCompanyFilter(req.user._id, companyId);
+    andConditions.push(companyFilter);
 
     // Status filter
     if (status && status !== 'ALL') {
       if (status === 'UNPAID') {
-        query.status = { $in: ['ISSUED', 'PARTIALLY_PAID'] };
+        andConditions.push({ status: { $in: ['ISSUED', 'PARTIALLY_PAID'] } });
       } else {
-        query.status = status;
+        andConditions.push({ status: status });
       }
     }
 
@@ -65,34 +82,38 @@ const getInvoices = async (req, res) => {
       if (period === 'today') {
         const start = new Date(now.setHours(0, 0, 0, 0));
         const end = new Date(now.setHours(23, 59, 59, 999));
-        query.invoiceDate = { $gte: start, $lte: end };
+        andConditions.push({ invoiceDate: { $gte: start, $lte: end } });
       } else if (period === 'week') {
         const firstDay = new Date(now.setDate(now.getDate() - now.getDay()));
         firstDay.setHours(0, 0, 0, 0);
-        query.invoiceDate = { $gte: firstDay };
+        andConditions.push({ invoiceDate: { $gte: firstDay } });
       } else if (period === 'month') {
         const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-        query.invoiceDate = { $gte: firstDay };
+        andConditions.push({ invoiceDate: { $gte: firstDay } });
       }
     } else if (startDate || endDate) {
-      query.invoiceDate = {};
-      if (startDate) query.invoiceDate.$gte = new Date(startDate);
+      const dateFilter = {};
+      if (startDate) dateFilter.$gte = new Date(startDate);
       if (endDate) {
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
-        query.invoiceDate.$lte = end;
+        dateFilter.$lte = end;
       }
+      andConditions.push({ invoiceDate: dateFilter });
     }
 
     // Search query
     if (search) {
-      query.$or = [
-        { invoiceNumber: { $regex: search, $options: 'i' } },
-        { 'customerSnapshot.name': { $regex: search, $options: 'i' } },
-        { 'customerSnapshot.phone': { $regex: search, $options: 'i' } },
-      ];
+      andConditions.push({
+        $or: [
+          { invoiceNumber: { $regex: search, $options: 'i' } },
+          { 'customerSnapshot.name': { $regex: search, $options: 'i' } },
+          { 'customerSnapshot.phone': { $regex: search, $options: 'i' } },
+        ],
+      });
     }
 
+    const query = andConditions.length > 1 ? { $and: andConditions } : andConditions[0];
     const invoices = await Invoice.find(query).sort({ invoiceDate: -1, createdAt: -1 });
 
     // Aggregate summary for the filtered results
@@ -159,7 +180,7 @@ const createInvoice = async (req, res) => {
       amountPaid = 0,
       notes,
       termsAndConditions,
-      companyId,  // ← NEW: per-company isolation
+      companyId,
     } = req.body;
 
     if (!customerId) {
@@ -170,6 +191,9 @@ const createInvoice = async (req, res) => {
       return res.status(400).json({ success: false, message: 'At least one item is required' });
     }
 
+    const companyScope = (companyId || '').trim() || 'comp_1';
+    const companyFilter = await buildCompanyFilter(req.user._id, companyScope);
+
     // Fetch or resolve Customer
     let customer;
     if (customerId) {
@@ -178,20 +202,19 @@ const createInvoice = async (req, res) => {
         userId: req.user._id,
       });
     }
-    
+
     // If not found by ID, attempt lookup by name (within same company scope)
     if (!customer && req.body.customerName) {
-      const nameQuery = {
-        name: { $regex: new RegExp(`^${req.body.customerName.trim()}$`, 'i') },
+      customer = await Customer.findOne({
         userId: req.user._id,
-      };
-      if (companyId && companyId.trim()) nameQuery.companyId = companyId.trim();
+        name: { $regex: new RegExp(`^${req.body.customerName.trim()}$`, 'i') },
+        ...companyFilter,
+      });
 
-      customer = await Customer.findOne(nameQuery);
       if (!customer) {
         customer = await Customer.create({
           userId: req.user._id,
-          companyId: companyId ? companyId.trim() : '',
+          companyId: companyScope,
           name: req.body.customerName.trim(),
           phone: req.body.customerPhone || '',
           state: req.body.customerState || 'Andhra Pradesh',
@@ -254,7 +277,7 @@ const createInvoice = async (req, res) => {
     // Create Invoice with Immutable Snapshots
     const invoice = await Invoice.create({
       userId: req.user._id,
-      companyId: companyId ? companyId.trim() : '',
+      companyId: companyScope,
       invoiceNumber: finalInvoiceNumber,
       customerId: customer._id,
       customerSnapshot: {
@@ -444,6 +467,7 @@ const updateInvoice = async (req, res) => {
       'description',
       'notes',
       'termsAndConditions',
+      'companyId',
     ];
 
     simpleFields.forEach((field) => {

@@ -139,13 +139,15 @@ class BusinessProvider with ChangeNotifier {
   }
 
   Future<void> updateCompany(BusinessModel updated) async {
-    final idx = _companies.indexWhere((c) => c.id == updated.id);
+    final idx = _companies.indexWhere(
+        (c) => c.id == updated.id || (c.id == 'comp_1' && updated.id.length == 24));
     if (idx != -1) {
       _companies[idx] = updated;
     } else {
       _companies.add(updated);
     }
-    if (_business.id == updated.id || _business.id.isEmpty) {
+    if (_business.id == updated.id ||
+        (_business.id == 'comp_1' && updated.id.length == 24)) {
       _business = updated;
     }
     await _cache.saveCompanies(_companies);
@@ -187,21 +189,35 @@ class BusinessProvider with ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    final previousId = _business.id;
     final res = await _api.get(Endpoints.business);
     _isLoading = false;
 
     if (res.success && res.data != null && res.data['business'] != null) {
-      _business = BusinessModel.fromJson(res.data['business']);
-      await _cache.saveBusiness(_business);
-      // Persist real MongoDB _id as the active company ID so future restarts
-      // immediately use the correct companyId for filtering
-      await _cache.saveActiveCompanyId(_business.id);
-      await updateCompany(_business);
+      final serverBusiness = BusinessModel.fromJson(res.data['business']);
 
-      // Notify callers if the ID changed (local seed → real MongoDB ID)
-      if (onIdResolved != null && _business.id != previousId) {
-        onIdResolved(_business.id);
+      // 1. Update Company 1 in the companies list
+      final idx = _companies.indexWhere(
+          (c) => c.id == serverBusiness.id || c.id == 'comp_1');
+      if (idx != -1) {
+        _companies[idx] = serverBusiness;
+      } else {
+        _companies.insert(0, serverBusiness);
+      }
+      await _cache.saveCompanies(_companies);
+
+      // 2. ONLY update active _business if the user is CURRENTLY on Company 1
+      final isCurrentlyOnPrimary = _business.id.isEmpty ||
+          _business.id == 'comp_1' ||
+          _business.id == serverBusiness.id;
+
+      if (isCurrentlyOnPrimary) {
+        _business = serverBusiness;
+        await _cache.saveBusiness(_business);
+        await _cache.saveActiveCompanyId(serverBusiness.id);
+
+        if (onIdResolved != null) {
+          onIdResolved(serverBusiness.id);
+        }
       }
     }
     notifyListeners();
