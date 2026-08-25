@@ -80,6 +80,8 @@ class CustomerModel {
 
   Map<String, dynamic> toJson() {
     return {
+      'id': id,
+      '_id': id,
       'name': name,
       'phone': phone,
       'email': email,

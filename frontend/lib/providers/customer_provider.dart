@@ -3,16 +3,32 @@ import 'package:uuid/uuid.dart';
 import '../models/customer_model.dart';
 import '../core/api/api_client.dart';
 import '../core/api/endpoints.dart';
+import '../services/local_cache_service.dart';
 
 class CustomerProvider with ChangeNotifier {
   final ApiClient _api = ApiClient();
+  final LocalCacheService _cache = LocalCacheService();
   final _uuid = const Uuid();
 
   List<CustomerModel> _customers = [];
-
   bool _isLoading = false;
   String? _errorMessage;
   String _searchQuery = '';
+  bool _isInitialized = false;
+
+  CustomerProvider() {
+    _initFromCache();
+  }
+
+  Future<void> _initFromCache() async {
+    if (_isInitialized) return;
+    final cached = await _cache.loadCustomers();
+    if (cached.isNotEmpty && _customers.isEmpty) {
+      _customers = cached;
+      notifyListeners();
+    }
+    _isInitialized = true;
+  }
 
   List<CustomerModel> get customers {
     if (_searchQuery.isEmpty) return _customers;
@@ -34,6 +50,7 @@ class CustomerProvider with ChangeNotifier {
   }
 
   Future<void> fetchCustomers() async {
+    await _initFromCache();
     _isLoading = true;
     notifyListeners();
 
@@ -45,6 +62,7 @@ class CustomerProvider with ChangeNotifier {
           .map((c) => CustomerModel.fromJson(c as Map<String, dynamic>))
           .toList();
       _customers = list;
+      await _cache.saveCustomers(_customers);
     }
     notifyListeners();
   }
@@ -79,13 +97,14 @@ class CustomerProvider with ChangeNotifier {
       finalCustomer = CustomerModel.fromJson(res.data['customer']);
     }
 
-    // Check if already in list
     final existingIdx = _customers.indexWhere((c) => c.id == finalCustomer.id || c.name.toLowerCase() == finalCustomer.name.toLowerCase());
     if (existingIdx != -1) {
       _customers[existingIdx] = finalCustomer;
     } else {
       _customers.insert(0, finalCustomer);
     }
+
+    await _cache.saveCustomers(_customers);
     notifyListeners();
     return finalCustomer;
   }
@@ -98,6 +117,7 @@ class CustomerProvider with ChangeNotifier {
         balance: current.balance + newDueAmount,
         lastTransactionDate: DateTime.now(),
       );
+      _cache.saveCustomers(_customers);
       notifyListeners();
     }
   }
@@ -114,6 +134,7 @@ class CustomerProvider with ChangeNotifier {
     final index = _customers.indexWhere((c) => c.id == updated.id);
     if (index != -1) {
       _customers[index] = updated;
+      await _cache.saveCustomers(_customers);
       notifyListeners();
       return true;
     }
@@ -124,8 +145,8 @@ class CustomerProvider with ChangeNotifier {
     final target = getCustomerById(id);
     final targetName = target?.name.trim().toLowerCase();
 
-    // Immediately remove from local list by id and name
     _customers.removeWhere((c) => c.id == id || (targetName != null && c.name.trim().toLowerCase() == targetName));
+    await _cache.saveCustomers(_customers);
     notifyListeners();
 
     if (id.isNotEmpty) {

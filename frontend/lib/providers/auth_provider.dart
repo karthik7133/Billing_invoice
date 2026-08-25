@@ -3,9 +3,12 @@ import '../models/user_model.dart';
 import '../models/business_model.dart';
 import '../core/api/api_client.dart';
 import '../core/api/endpoints.dart';
+import '../services/local_cache_service.dart';
+import '../services/backend_sync_service.dart';
 
 class AuthProvider with ChangeNotifier {
   final ApiClient _api = ApiClient();
+  final LocalCacheService _cache = LocalCacheService();
 
   UserModel? _user;
   BusinessModel? _business;
@@ -21,12 +24,15 @@ class AuthProvider with ChangeNotifier {
   bool get isAuthenticated => _isAuthenticated;
   bool get hasCheckedAuth => _hasCheckedAuth;
 
-  /// Checks for a stored token on startup.
-  /// Does NOT make a network call — trusts the stored token immediately.
-  /// Token will be naturally validated on the first real API call.
+  /// Checks for a stored token and loads cached user/business profile immediately
   Future<void> checkAuthStatus() async {
     debugPrint('[AuthProvider] checkAuthStatus starting...');
     await _api.init();
+    await _cache.init();
+
+    _user = await _cache.loadUser();
+    _business = await _cache.loadBusiness();
+
     if (_api.token != null && _api.token!.isNotEmpty) {
       debugPrint('[AuthProvider] Found saved token, authenticating user');
       _isAuthenticated = true;
@@ -36,6 +42,9 @@ class AuthProvider with ChangeNotifier {
     }
     _hasCheckedAuth = true;
     notifyListeners();
+
+    // Start proactive early warm-up for Render backend
+    BackendSyncService.instance.startEarlyWarmup();
   }
 
   Future<bool> register({
@@ -71,13 +80,16 @@ class AuthProvider with ChangeNotifier {
       if (res.data['business'] != null) {
         _business = BusinessModel.fromJson(res.data['business']);
       }
+      if (_user != null) await _cache.saveUser(_user!);
+      if (_business != null) await _cache.saveBusiness(_business!);
+
       _isAuthenticated = true;
       _errorMessage = null;
       notifyListeners();
       return true;
     } else {
       debugPrint('[AuthProvider] Registration FAILED: ${res.message}');
-      _errorMessage = res.message ?? 'Registration failed. Please check your details and try again.';
+      _errorMessage = res.message ?? 'Registration failed. Server may still be waking up. Please retry.';
       _isAuthenticated = false;
       notifyListeners();
       return false;
@@ -104,13 +116,16 @@ class AuthProvider with ChangeNotifier {
       if (res.data['business'] != null) {
         _business = BusinessModel.fromJson(res.data['business']);
       }
+      if (_user != null) await _cache.saveUser(_user!);
+      if (_business != null) await _cache.saveBusiness(_business!);
+
       _isAuthenticated = true;
       _errorMessage = null;
       notifyListeners();
       return true;
     } else {
       debugPrint('[AuthProvider] Login FAILED: ${res.message}');
-      _errorMessage = res.message ?? 'Invalid email or password.';
+      _errorMessage = res.message ?? 'Invalid email or password. Server may still be waking up.';
       _isAuthenticated = false;
       notifyListeners();
       return false;
@@ -126,6 +141,30 @@ class AuthProvider with ChangeNotifier {
       email: 'demo@billing.app',
       phone: '',
     );
+    _business = BusinessModel(
+      id: 'biz_demo',
+      businessName: 'Modern Enterprises',
+      phone: '9876543210',
+      email: 'demo@billing.app',
+      address: 'Industrial Estate, Phase 2',
+      city: 'Visakhapatnam',
+      state: 'Andhra Pradesh',
+      stateCode: '37',
+      pincode: '530001',
+      gstin: '37AAAAA0000A1Z5',
+      pan: 'AAAAA0000A',
+      invoicePrefix: 'INV',
+      nextInvoiceNumber: 101,
+      bankDetails: BankDetails(
+        bankName: 'HDFC Bank',
+        accountHolderName: 'Modern Enterprises',
+        accountNumber: '50200012345678',
+        ifscCode: 'HDFC0001234',
+        branch: 'Main Branch',
+        upiId: 'enterprise@upi',
+      ),
+      termsAndConditions: '1. Goods once sold will not be taken back.\n2. Payment due within 15 days.',
+    );
     _isAuthenticated = true;
     _errorMessage = null;
     notifyListeners();
@@ -137,9 +176,11 @@ class AuthProvider with ChangeNotifier {
     if (res.success && res.data != null) {
       if (res.data['user'] != null) {
         _user = UserModel.fromJson(res.data['user']);
+        await _cache.saveUser(_user!);
       }
       if (res.data['business'] != null) {
         _business = BusinessModel.fromJson(res.data['business']);
+        await _cache.saveBusiness(_business!);
       }
       notifyListeners();
     }
@@ -152,6 +193,7 @@ class AuthProvider with ChangeNotifier {
     _business = null;
     _isAuthenticated = false;
     _errorMessage = null;
+    _cache.clearAll();
     notifyListeners();
   }
 }

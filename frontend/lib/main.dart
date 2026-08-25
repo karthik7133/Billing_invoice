@@ -8,6 +8,8 @@ import 'providers/business_provider.dart';
 import 'providers/customer_provider.dart';
 import 'providers/product_provider.dart';
 import 'providers/invoice_provider.dart';
+import 'services/local_cache_service.dart';
+import 'services/backend_sync_service.dart';
 import 'screens/onboarding/onboarding_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/dashboard/main_navigation_screen.dart';
@@ -15,6 +17,8 @@ import 'screens/dashboard/main_navigation_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await ApiClient().init();
+  await LocalCacheService().init();
+  BackendSyncService.instance.startEarlyWarmup();
   runApp(const GstBillingApp());
 }
 
@@ -105,44 +109,61 @@ class _SplashScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1E3A8A),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(20),
+      body: Container(
+        width: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF1E3A8A), Color(0xFF2563EB)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(22),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.1),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: const Icon(Icons.receipt_long_rounded, color: Colors.white, size: 52),
               ),
-              child: const Icon(Icons.receipt_long_rounded, color: Colors.white, size: 52),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'GST Billing',
-              style: TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
-                letterSpacing: -0.5,
+              const SizedBox(height: 22),
+              const Text(
+                'GST Billing & Invoice',
+                style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                  letterSpacing: -0.5,
+                ),
               ),
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              'Professional Invoicing Engine',
-              style: TextStyle(fontSize: 13, color: Colors.white60),
-            ),
-            const SizedBox(height: 40),
-            const SizedBox(
-              width: 28,
-              height: 28,
-              child: CircularProgressIndicator(
-                strokeWidth: 2.5,
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white54),
+              const SizedBox(height: 6),
+              const Text(
+                'Professional Invoicing & Accounting Engine',
+                style: TextStyle(fontSize: 13, color: Colors.white70, fontWeight: FontWeight.w500),
               ),
-            ),
-          ],
+              const SizedBox(height: 40),
+              const SizedBox(
+                width: 26,
+                height: 26,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white70),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

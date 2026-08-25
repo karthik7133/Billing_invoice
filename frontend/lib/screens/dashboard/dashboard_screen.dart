@@ -8,8 +8,12 @@ import '../../models/customer_model.dart';
 import '../../providers/business_provider.dart';
 import '../../providers/customer_provider.dart';
 import '../../providers/invoice_provider.dart';
+import '../../providers/product_provider.dart';
+import '../../providers/auth_provider.dart';
+import '../../services/backend_sync_service.dart';
 import '../../services/pdf_invoice_service.dart';
 import '../../services/share_service.dart';
+import '../../widgets/cloud_server_status_pill.dart';
 import '../business/business_profile_screen.dart';
 import '../customers/add_edit_customer_screen.dart';
 import '../customers/party_details_screen.dart';
@@ -27,7 +31,7 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   // 0 = Transaction Details, 1 = Party Details
-  int _selectedTab = 1; // Default to Party Details as in Image 1
+  int _selectedTab = 1;
 
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
@@ -41,15 +45,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadData() async {
+    final authP = Provider.of<AuthProvider>(context, listen: false);
     final custP = Provider.of<CustomerProvider>(context, listen: false);
     final invP = Provider.of<InvoiceProvider>(context, listen: false);
     final busP = Provider.of<BusinessProvider>(context, listen: false);
+    final prodP = Provider.of<ProductProvider>(context, listen: false);
 
-    await Future.wait([
-      custP.fetchCustomers(),
-      invP.fetchInvoices(),
-      busP.fetchBusinessProfile(),
-    ]);
+    await BackendSyncService.instance.forceSync(
+      authProvider: authP,
+      businessProvider: busP,
+      customerProvider: custP,
+      productProvider: prodP,
+      invoiceProvider: invP,
+    );
   }
 
   @override
@@ -69,14 +77,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
         : 'My Business';
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7FB),
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: _buildTopHeader(context, businessName),
       body: RefreshIndicator(
         onRefresh: _loadData,
         child: Column(
           children: [
             // 1. Top Segmented Pills (Transaction Details vs Party Details)
-            _buildSegmentedTabSelector(),
+            _buildSegmentedTabSelector(customerProvider.customers.length, invoiceProvider.invoices.length),
 
             // 2. Quick Links Section
             _buildQuickLinksRow(),
@@ -100,7 +108,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // ─── 1. Header (Logo, Title, Shield, Bell, Settings) ──────────────────────────
+  // ─── 1. Header (Logo, Title, Cloud Pill, Sync, Settings) ───────────────────
   PreferredSizeWidget _buildTopHeader(BuildContext context, String businessName) {
     return AppBar(
       backgroundColor: Colors.white,
@@ -113,13 +121,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
             width: 32,
             height: 32,
             decoration: BoxDecoration(
-              color: const Color(0xFFE8F1FC),
-              borderRadius: BorderRadius.circular(8),
+              gradient: const LinearGradient(
+                colors: [Color(0xFF2563EB), Color(0xFF1E3A8A)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(9),
             ),
             child: Center(
               child: Text(
                 businessName.isNotEmpty ? businessName[0].toUpperCase() : 'B',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF2563EB)),
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white),
               ),
             ),
           ),
@@ -130,107 +142,178 @@ class _DashboardScreenState extends State<DashboardScreen> {
         style: const TextStyle(
           fontSize: 17,
           fontWeight: FontWeight.w800,
-          color: Color(0xFF1E293B),
-          letterSpacing: -0.2,
+          color: Color(0xFF0F172A),
+          letterSpacing: -0.3,
         ),
       ),
       actions: [
+        const CloudServerStatusPill(compact: true),
+        const SizedBox(width: 4),
         IconButton(
-          icon: const Icon(Icons.settings_outlined, color: Color(0xFF64748B), size: 22),
-          tooltip: 'Settings / Business Profile',
+          icon: const Icon(Icons.sync_rounded, color: Color(0xFF64748B), size: 21),
+          tooltip: 'Sync with Cloud Server',
+          onPressed: _loadData,
+        ),
+        IconButton(
+          icon: const Icon(Icons.settings_outlined, color: Color(0xFF64748B), size: 21),
+          tooltip: 'Business Profile',
           onPressed: () {
             Navigator.of(context).push(
               MaterialPageRoute(builder: (ctx) => const BusinessProfileScreen()),
             );
           },
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 6),
       ],
     );
   }
 
-  // ─── 2. Segmented Pill Tabs (Transaction Details vs Party Details) ─────────────
-  Widget _buildSegmentedTabSelector() {
+  // ─── 2. Segmented Pill Tabs (Transaction Details vs Party Details) ─────────
+  Widget _buildSegmentedTabSelector(int partyCount, int txnCount) {
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Row(
-        children: [
-          // Transaction Details Tab
-          Expanded(
-            child: GestureDetector(
-              onTap: () {
-                HapticFeedback.selectionClick();
-                setState(() {
-                  _selectedTab = 0;
-                  _searchController.clear();
-                  _searchQuery = '';
-                });
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: _selectedTab == 0 ? AppColors.vyaparPinkLight : Colors.white,
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(
-                    color: _selectedTab == 0 ? AppColors.vyaparPink : const Color(0xFFE2E8F0),
-                    width: _selectedTab == 0 ? 1.5 : 1,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: [
+            // Transaction Details Tab
+            Expanded(
+              child: GestureDetector(
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  setState(() {
+                    _selectedTab = 0;
+                    _searchController.clear();
+                    _searchQuery = '';
+                  });
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  decoration: BoxDecoration(
+                    color: _selectedTab == 0 ? Colors.white : Colors.transparent,
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: _selectedTab == 0
+                        ? [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.06),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ]
+                        : null,
                   ),
-                ),
-                child: Center(
-                  child: Text(
-                    'Transaction Details',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: _selectedTab == 0 ? FontWeight.w800 : FontWeight.w500,
-                      color: _selectedTab == 0 ? AppColors.vyaparPink : const Color(0xFF64748B),
+                  child: Center(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Transaction Details',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: _selectedTab == 0 ? FontWeight.w800 : FontWeight.w600,
+                            color: _selectedTab == 0 ? AppColors.electricBlue : const Color(0xFF64748B),
+                          ),
+                        ),
+                        if (txnCount > 0) ...[
+                          const SizedBox(width: 5),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: _selectedTab == 0 ? const Color(0xFFEFF6FF) : const Color(0xFFE2E8F0),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              '$txnCount',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: _selectedTab == 0 ? AppColors.electricBlue : const Color(0xFF64748B),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(width: 12),
-          // Party Details Tab
-          Expanded(
-            child: GestureDetector(
-              onTap: () {
-                HapticFeedback.selectionClick();
-                setState(() {
-                  _selectedTab = 1;
-                  _searchController.clear();
-                  _searchQuery = '';
-                });
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: _selectedTab == 1 ? AppColors.vyaparPinkLight : Colors.white,
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(
-                    color: _selectedTab == 1 ? AppColors.vyaparPink : const Color(0xFFE2E8F0),
-                    width: _selectedTab == 1 ? 1.5 : 1,
+            // Party Details Tab
+            Expanded(
+              child: GestureDetector(
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  setState(() {
+                    _selectedTab = 1;
+                    _searchController.clear();
+                    _searchQuery = '';
+                  });
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  decoration: BoxDecoration(
+                    color: _selectedTab == 1 ? Colors.white : Colors.transparent,
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: _selectedTab == 1
+                        ? [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.06),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ]
+                        : null,
                   ),
-                ),
-                child: Center(
-                  child: Text(
-                    'Party Details',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: _selectedTab == 1 ? FontWeight.w800 : FontWeight.w500,
-                      color: _selectedTab == 1 ? AppColors.vyaparPink : const Color(0xFF64748B),
+                  child: Center(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Party Details',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: _selectedTab == 1 ? FontWeight.w800 : FontWeight.w600,
+                            color: _selectedTab == 1 ? AppColors.electricBlue : const Color(0xFF64748B),
+                          ),
+                        ),
+                        if (partyCount > 0) ...[
+                          const SizedBox(width: 5),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: _selectedTab == 1 ? const Color(0xFFEFF6FF) : const Color(0xFFE2E8F0),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              '$partyCount',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: _selectedTab == 1 ? AppColors.electricBlue : const Color(0xFF64748B),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  // ─── 3. Quick Links Row ────────────────────────────────────────────────────────
+  // ─── 3. Quick Links Row ───────────────────────────────────────────────────
   Widget _buildQuickLinksRow() {
     return Container(
       color: Colors.white,
@@ -238,11 +321,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Quick Links',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
-          ),
-          const SizedBox(height: 10),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: _selectedTab == 1
@@ -274,10 +352,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       },
                     ),
                     _buildQuickLinkItem(
-                      icon: Icons.settings_outlined,
-                      iconBg: const Color(0xFFF1F5F9),
-                      iconColor: const Color(0xFF475569),
-                      label: 'Settings',
+                      icon: Icons.storefront_outlined,
+                      iconBg: const Color(0xFFF0FDF4),
+                      iconColor: const Color(0xFF16A34A),
+                      label: 'Profile',
                       onTap: () {
                         Navigator.of(context).push(
                           MaterialPageRoute(builder: (_) => const BusinessProfileScreen()),
@@ -286,8 +364,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                     _buildQuickLinkItem(
                       icon: Icons.receipt_long_outlined,
-                      iconBg: const Color(0xFFEFF6FF),
-                      iconColor: const Color(0xFF3B82F6),
+                      iconBg: const Color(0xFFF5F3FF),
+                      iconColor: const Color(0xFF7C3AED),
                       label: 'Sales Report',
                       onTap: () {
                         Navigator.of(context).push(
@@ -301,7 +379,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       icon: Icons.note_add_outlined,
                       iconBg: const Color(0xFFFFECEF),
                       iconColor: AppColors.vyaparPink,
-                      label: 'Add Txn',
+                      label: 'Add Sale',
                       onTap: () {
                         Navigator.of(context).push(
                           MaterialPageRoute(builder: (_) => const CreateInvoiceScreen()),
@@ -310,7 +388,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                     _buildQuickLinkItem(
                       icon: Icons.analytics_outlined,
-                      iconBg: const Color(0xFFE8F1FC),
+                      iconBg: const Color(0xFFEFF6FF),
                       iconColor: const Color(0xFF0284C7),
                       label: 'Sale Report',
                       onTap: () {
@@ -321,9 +399,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                     _buildQuickLinkItem(
                       icon: Icons.settings_outlined,
-                      iconBg: const Color(0xFFF1F5F9),
+                      iconBg: const Color(0xFFF8FAFC),
                       iconColor: const Color(0xFF475569),
-                      label: 'Txn Settings',
+                      label: 'Settings',
                       onTap: () {
                         Navigator.of(context).push(
                           MaterialPageRoute(builder: (_) => const BusinessProfileScreen()),
@@ -332,8 +410,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                     _buildQuickLinkItem(
                       icon: Icons.history_rounded,
-                      iconBg: const Color(0xFFEFF6FF),
-                      iconColor: const Color(0xFF3B82F6),
+                      iconBg: const Color(0xFFF0FDF4),
+                      iconColor: const Color(0xFF16A34A),
                       label: 'History',
                       onTap: () {
                         Navigator.of(context).push(
@@ -364,7 +442,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             height: 44,
             decoration: BoxDecoration(
               color: iconBg,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(13),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.02),
@@ -373,25 +451,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ],
             ),
-            child: Icon(icon, color: iconColor, size: 22),
+            child: Icon(icon, color: iconColor, size: 21),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 5),
           Text(
             label,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: Color(0xFF475569)),
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF475569)),
           ),
         ],
       ),
     );
   }
 
-  // ─── 4. Search & Filter Bar ───────────────────────────────────────────────────
+  // ─── 4. Search & Filter Bar ───────────────────────────────────────────────
   Widget _buildSearchBar() {
-    final hint = _selectedTab == 1 ? 'Search party by name or phone...' : 'Search transaction by #no or customer...';
+    final hint = _selectedTab == 1 ? 'Search party by name or phone...' : 'Search sale by #no or customer...';
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       child: Container(
-        height: 46,
+        height: 44,
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
@@ -409,13 +487,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
           children: [
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 12),
-              child: Icon(Icons.search_rounded, color: Color(0xFF2563EB), size: 20),
+              child: Icon(Icons.search_rounded, color: Color(0xFF2563EB), size: 19),
             ),
             Expanded(
               child: TextField(
                 controller: _searchController,
                 onChanged: (val) => setState(() => _searchQuery = val),
-                style: const TextStyle(fontSize: 14, color: Color(0xFF1E293B), fontWeight: FontWeight.w500),
+                style: const TextStyle(fontSize: 13.5, color: Color(0xFF1E293B), fontWeight: FontWeight.w500),
                 decoration: InputDecoration(
                   hintText: hint,
                   hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8), fontWeight: FontWeight.normal),
@@ -445,7 +523,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // ─── 5. Party Details List (Image 1) ──────────────────────────────────────────
+  // ─── 5. Party Details List ────────────────────────────────────────────────
   Widget _buildPartyDetailsList(
     CustomerProvider customerProvider,
     InvoiceProvider invoiceProvider,
@@ -461,15 +539,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.people_outline, size: 48, color: Colors.grey.shade400),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                color: Color(0xFFEFF6FF),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.people_outline, size: 40, color: Color(0xFF2563EB)),
+            ),
             const SizedBox(height: 12),
             Text(
               _searchQuery.isNotEmpty ? 'No parties matching "$_searchQuery"' : 'No Parties Added Yet',
-              style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: Color(0xFF1E293B)),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 4),
             const Text(
-              'Tap "+ Add New Party" below to add your first customer',
+              'Tap "+ Add New Party" below to record party balances',
               style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
             ),
             const SizedBox(height: 60),
@@ -479,7 +564,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     return ListView.separated(
-      padding: const EdgeInsets.only(left: 14, right: 14, top: 4, bottom: 80),
+      padding: const EdgeInsets.only(left: 14, right: 14, top: 4, bottom: 85),
       itemCount: parties.length,
       separatorBuilder: (context, index) => const SizedBox(height: 8),
       itemBuilder: (ctx, index) {
@@ -503,12 +588,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
               MaterialPageRoute(builder: (c) => PartyDetailsScreen(customer: party)),
             );
           },
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(14),
               border: Border.all(color: const Color(0xFFE2E8F0)),
               boxShadow: [
                 BoxShadow(
@@ -521,30 +606,55 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                // Left: Party Name & Date
+                // Avatar + Name + Date
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Row(
                     children: [
-                      Text(
-                        party.name,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF1E293B),
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEFF6FF),
+                          borderRadius: BorderRadius.circular(11),
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                        child: Center(
+                          child: Text(
+                            party.name.isNotEmpty ? party.name[0].toUpperCase() : 'P',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF2563EB),
+                            ),
+                          ),
+                        ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        dateText,
-                        style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              party.name,
+                              style: const TextStyle(
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF0F172A),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              dateText,
+                              style: const TextStyle(fontSize: 11.5, color: Color(0xFF94A3B8), fontWeight: FontWeight.w500),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
                 ),
-                // Right: Amount & Status (You'll Get / You'll Give)
+                // Right: Balance & Status Pill
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
@@ -557,16 +667,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ),
                     const SizedBox(height: 2),
-                    Text(
-                      isReceivable
-                          ? (balanceAbs > 0 ? "You'll Get" : 'Settled')
-                          : "You'll Give",
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                      decoration: BoxDecoration(
                         color: isReceivable
-                            ? (balanceAbs > 0 ? AppColors.receivableGreen : const Color(0xFF94A3B8))
-                            : AppColors.payableRed,
+                            ? (balanceAbs > 0 ? AppColors.receivableGreenLight : const Color(0xFFF1F5F9))
+                            : AppColors.payableRedLight,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        isReceivable
+                            ? (balanceAbs > 0 ? "You'll Get" : 'Settled')
+                            : "You'll Give",
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: isReceivable
+                              ? (balanceAbs > 0 ? AppColors.receivableGreen : const Color(0xFF64748B))
+                              : AppColors.payableRed,
+                        ),
                       ),
                     ),
                   ],
@@ -579,7 +698,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // ─── 6. Transaction Details List (Image 2) ────────────────────────────────────
+  // ─── 6. Transaction Details List ──────────────────────────────────────────
   Widget _buildTransactionDetailsList(InvoiceProvider invoiceProvider) {
     var invoices = invoiceProvider.invoices;
     if (_searchQuery.isNotEmpty) {
@@ -596,15 +715,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.receipt_long_outlined, size: 48, color: Colors.grey.shade400),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                color: Color(0xFFEFF6FF),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.receipt_long_outlined, size: 40, color: Color(0xFF2563EB)),
+            ),
             const SizedBox(height: 12),
             Text(
-              _searchQuery.isNotEmpty ? 'No transactions matching "$_searchQuery"' : 'No Transactions Yet',
-              style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+              _searchQuery.isNotEmpty ? 'No sales matching "$_searchQuery"' : 'No Transactions Yet',
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: Color(0xFF1E293B)),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 4),
             const Text(
-              'Tap "+ Add New Sale" below to create a bill',
+              'Tap "+ Add New Sale" below to create your first invoice',
               style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
             ),
             const SizedBox(height: 60),
@@ -614,7 +740,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     return ListView.separated(
-      padding: const EdgeInsets.only(left: 14, right: 14, top: 4, bottom: 80),
+      padding: const EdgeInsets.only(left: 14, right: 14, top: 4, bottom: 85),
       itemCount: invoices.length,
       separatorBuilder: (context, index) => const SizedBox(height: 10),
       itemBuilder: (ctx, index) {
@@ -628,12 +754,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
               MaterialPageRoute(builder: (c) => InvoiceDetailScreen(invoice: inv)),
             );
           },
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           child: Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(14),
               border: Border.all(color: const Color(0xFFE2E8F0)),
               boxShadow: [
                 BoxShadow(
@@ -646,7 +772,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Top Row: Customer Name | #No31 | Date
+                // Top Row: Customer Name | #InvoiceNo | Date
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -656,22 +782,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF1E293B),
+                          color: Color(0xFF0F172A),
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
+                    Row(
                       children: [
-                        Text(
-                          '#${inv.invoiceNumber}',
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            '#${inv.invoiceNumber}',
+                            style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF475569)),
+                          ),
                         ),
+                        const SizedBox(width: 8),
                         Text(
                           dateStr,
-                          style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+                          style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8), fontWeight: FontWeight.w500),
                         ),
                       ],
                     ),
@@ -680,22 +813,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const SizedBox(height: 6),
                 // Status Badge
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                   decoration: BoxDecoration(
-                    color: isPaid ? const Color(0xFFE6F7F0) : const Color(0xFFFEF3C7),
-                    borderRadius: BorderRadius.circular(4),
+                    color: isPaid ? AppColors.paidGreenLight : AppColors.unpaidOrangeLight,
+                    borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
                     isPaid ? 'SALE : PAID' : 'SALE : UNPAID',
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w800,
-                      color: isPaid ? AppColors.receivableGreen : const Color(0xFFB45309),
+                      color: isPaid ? AppColors.receivableGreen : AppColors.unpaidOrange,
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
-                // Bottom Row: Total | Balance | Print / Share / 3 dots
+                const SizedBox(height: 10),
+                // Bottom Row: Total | Balance | Print / Share / More
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -704,26 +837,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Total', style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
-                            const SizedBox(height: 2),
+                            const Text('Total Amount', style: TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8), fontWeight: FontWeight.w500)),
+                            const SizedBox(height: 1),
                             Text(
                               CurrencyFormatter.format(inv.grandTotal),
-                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
+                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
                             ),
                           ],
                         ),
-                        const SizedBox(width: 24),
+                        const SizedBox(width: 22),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Balance', style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
-                            const SizedBox(height: 2),
+                            const Text('Balance Due', style: TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8), fontWeight: FontWeight.w500)),
+                            const SizedBox(height: 1),
                             Text(
                               CurrencyFormatter.format(inv.balanceDue),
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w800,
-                                color: inv.balanceDue > 0 ? const Color(0xFFEF4444) : const Color(0xFF1E293B),
+                                color: inv.balanceDue > 0 ? AppColors.payableRed : const Color(0xFF0F172A),
                               ),
                             ),
                           ],
@@ -782,10 +915,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // ─── 7. Floating Action Button (Images 1 & 2) ─────────────────────────────────
+  // ─── 7. Floating Action Button ────────────────────────────────────────────
   Widget _buildFloatingActionButton(BuildContext context) {
     if (_selectedTab == 1) {
-      // "+ Add New Party" pill FAB
       return ElevatedButton.icon(
         onPressed: () async {
           final created = await Navigator.of(context).push<CustomerModel>(
@@ -798,34 +930,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
         icon: const Icon(Icons.person_add_alt_1_outlined, size: 18, color: Colors.white),
         label: const Text(
           'Add New Party',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white),
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, letterSpacing: 0.3),
         ),
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.vyaparPink,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-          elevation: 6,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+          elevation: 4,
           shadowColor: AppColors.vyaparPink.withValues(alpha: 0.4),
         ),
       );
     } else {
-      // "+ Add New Sale" pill FAB
       return ElevatedButton.icon(
         onPressed: () {
           Navigator.of(context).push(
             MaterialPageRoute(builder: (ctx) => const CreateInvoiceScreen()),
           );
         },
-        icon: const Icon(Icons.receipt_long_rounded, size: 18, color: Colors.white),
+        icon: const Icon(Icons.add_circle_outline_rounded, size: 19, color: Colors.white),
         label: const Text(
           'Add New Sale',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white),
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, letterSpacing: 0.3),
         ),
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.vyaparPink,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-          elevation: 6,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+          elevation: 4,
           shadowColor: AppColors.vyaparPink.withValues(alpha: 0.4),
         ),
       );

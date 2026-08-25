@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Invoice = require('../models/Invoice');
 const Business = require('../models/Business');
 const Customer = require('../models/Customer');
@@ -287,6 +288,8 @@ const createInvoice = async (req, res) => {
       excessAmount: excessAmount,
       paymentType: req.body.paymentType || 'Cash',
       description: req.body.description || notes || '',
+      origin: req.body.origin || 'AP',
+      attachments: Array.isArray(req.body.attachments) ? req.body.attachments : [],
       status: finalStatus,
       notes: notes || req.body.description || 'Thank you for your business!',
       termsAndConditions: termsAndConditions || business.termsAndConditions || '',
@@ -359,6 +362,105 @@ const markInvoiceAsPaid = async (req, res) => {
   }
 };
 
+// @desc    Update invoice (e.g. invoiceNumber, notes, items, status, etc.)
+// @route   PUT /api/invoices/:id
+// @access  Private
+const updateInvoice = async (req, res) => {
+  try {
+    const { id } = req.params;
+    let query = { userId: req.user._id };
+
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      query._id = id;
+    } else {
+      query.$or = [{ _id: id }, { invoiceNumber: id }];
+    }
+
+    let invoice = await Invoice.findOne(query);
+
+    if (!invoice) {
+      return res.status(404).json({ success: false, message: 'Invoice not found' });
+    }
+
+    if (req.body.invoiceNumber !== undefined && req.body.invoiceNumber !== null) {
+      invoice.invoiceNumber = String(req.body.invoiceNumber).trim();
+    }
+
+    // Recalculate totals if items are updated
+    if (req.body.items && Array.isArray(req.body.items) && req.body.items.length > 0) {
+      const business = await Business.findOne({ userId: req.user._id });
+      const sellerState = business ? business.state : 'Andhra Pradesh';
+      const buyerState = invoice.customerSnapshot ? invoice.customerSnapshot.state : sellerState;
+
+      const calculated = calculateInvoiceTotals({
+        items: req.body.items,
+        sellerState,
+        buyerState,
+        invoiceDiscount: req.body.invoiceDiscount !== undefined ? req.body.invoiceDiscount : invoice.extraDiscount,
+        invoiceDiscountType: req.body.invoiceDiscountType || 'FIXED',
+        otherCharges: req.body.otherCharges !== undefined ? req.body.otherCharges : invoice.otherCharges,
+      });
+
+      invoice.items = calculated.items;
+      invoice.isInterState = calculated.isInterState;
+      invoice.subtotal = calculated.subtotal;
+      invoice.itemsDiscount = calculated.itemsDiscount;
+      invoice.extraDiscount = calculated.extraDiscount;
+      invoice.totalDiscount = calculated.totalDiscount;
+      invoice.taxableAmount = calculated.taxableAmount;
+      invoice.cgst = calculated.cgst;
+      invoice.sgst = calculated.sgst;
+      invoice.igst = calculated.igst;
+      invoice.totalTax = calculated.totalTax;
+      invoice.otherCharges = calculated.otherCharges;
+      invoice.roundOff = calculated.roundOff;
+      invoice.grandTotal = calculated.grandTotal;
+      invoice.amountInWords = numberToWordsIndian(calculated.grandTotal);
+    }
+
+    const simpleFields = [
+      'invoiceDate',
+      'dueDate',
+      'origin',
+      'attachments',
+      'paymentType',
+      'description',
+      'notes',
+      'termsAndConditions',
+    ];
+
+    simpleFields.forEach((field) => {
+      if (req.body[field] !== undefined) {
+        if (field === 'invoiceDate' || field === 'dueDate') {
+          invoice[field] = new Date(req.body[field]);
+        } else {
+          invoice[field] = req.body[field];
+        }
+      }
+    });
+
+    if (req.body.amountPaid !== undefined) {
+      invoice.amountPaid = Number(req.body.amountPaid);
+      invoice.balanceDue = Number(Math.max(0, invoice.grandTotal - invoice.amountPaid).toFixed(2));
+      invoice.excessAmount = invoice.amountPaid > invoice.grandTotal ? Number((invoice.amountPaid - invoice.grandTotal).toFixed(2)) : 0;
+      if (invoice.amountPaid >= invoice.grandTotal && invoice.grandTotal > 0) {
+        invoice.status = 'PAID';
+      } else if (invoice.amountPaid > 0) {
+        invoice.status = 'PARTIALLY_PAID';
+      }
+    }
+
+    if (req.body.status !== undefined) {
+      invoice.status = req.body.status;
+    }
+
+    await invoice.save();
+    res.json({ success: true, invoice });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // @desc    Delete invoice
 // @route   DELETE /api/invoices/:id
 // @access  Private
@@ -384,6 +486,7 @@ module.exports = {
   getInvoices,
   getInvoiceById,
   createInvoice,
+  updateInvoice,
   updateInvoiceStatus,
   markInvoiceAsPaid,
   deleteInvoice,

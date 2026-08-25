@@ -3,16 +3,32 @@ import 'package:uuid/uuid.dart';
 import '../models/product_model.dart';
 import '../core/api/api_client.dart';
 import '../core/api/endpoints.dart';
+import '../services/local_cache_service.dart';
 
 class ProductProvider with ChangeNotifier {
   final ApiClient _api = ApiClient();
+  final LocalCacheService _cache = LocalCacheService();
   final _uuid = const Uuid();
 
   List<ProductModel> _products = [];
-
   bool _isLoading = false;
   String? _errorMessage;
   String _searchQuery = '';
+  bool _isInitialized = false;
+
+  ProductProvider() {
+    _initFromCache();
+  }
+
+  Future<void> _initFromCache() async {
+    if (_isInitialized) return;
+    final cached = await _cache.loadProducts();
+    if (cached.isNotEmpty && _products.isEmpty) {
+      _products = cached;
+      notifyListeners();
+    }
+    _isInitialized = true;
+  }
 
   List<ProductModel> get products {
     if (_searchQuery.isEmpty) return _products;
@@ -34,6 +50,7 @@ class ProductProvider with ChangeNotifier {
   }
 
   Future<void> fetchProducts() async {
+    await _initFromCache();
     _isLoading = true;
     notifyListeners();
 
@@ -45,6 +62,7 @@ class ProductProvider with ChangeNotifier {
           .map((p) => ProductModel.fromJson(p as Map<String, dynamic>))
           .toList();
       _products = list;
+      await _cache.saveProducts(_products);
     }
     notifyListeners();
   }
@@ -64,6 +82,7 @@ class ProductProvider with ChangeNotifier {
     }
 
     _products.insert(0, finalProduct);
+    await _cache.saveProducts(_products);
     notifyListeners();
     return finalProduct;
   }
@@ -80,6 +99,7 @@ class ProductProvider with ChangeNotifier {
     final index = _products.indexWhere((p) => p.id == updated.id);
     if (index != -1) {
       _products[index] = updated;
+      await _cache.saveProducts(_products);
       notifyListeners();
       return true;
     }
@@ -91,6 +111,7 @@ class ProductProvider with ChangeNotifier {
       await _api.delete('${Endpoints.products}/$id');
     }
     _products.removeWhere((p) => p.id == id);
+    await _cache.saveProducts(_products);
     notifyListeners();
     return true;
   }

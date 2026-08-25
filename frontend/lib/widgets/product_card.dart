@@ -25,14 +25,21 @@ class ProductCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -42,51 +49,50 @@ class ProductCard extends StatelessWidget {
                 height: 44,
                 decoration: BoxDecoration(
                   color: isService
-                      ? Colors.purple.withValues(alpha: 0.12)
-                      : AppColors.primary.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(8),
+                      ? const Color(0xFFF5F3FF)
+                      : const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
                   isService ? Icons.design_services_outlined : Icons.inventory_2_outlined,
-                  color: isService ? Colors.purple : AppColors.primary,
+                  color: isService ? const Color(0xFF7C3AED) : const Color(0xFF2563EB),
                   size: 22,
                 ),
               ),
               const SizedBox(width: 12),
 
-              // Name + details — flexible, never overflows
+              // Name + details
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Name + GST badge via Wrap
-                    Wrap(
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      spacing: 6,
-                      runSpacing: 2,
+                    Row(
                       children: [
-                        Text(
-                          product.name,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 15,
-                            color: AppColors.textPrimary,
+                        Flexible(
+                          child: Text(
+                            product.name,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                              color: Color(0xFF0F172A),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
+                        const SizedBox(width: 6),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
                           decoration: BoxDecoration(
-                            color: AppColors.infoBg,
-                            borderRadius: BorderRadius.circular(4),
+                            color: const Color(0xFFEFF6FF),
+                            borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
                             'GST ${product.gstRate.toStringAsFixed(0)}%',
                             style: const TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
-                              color: AppColors.info,
+                              color: Color(0xFF2563EB),
                             ),
                           ),
                         ),
@@ -96,24 +102,23 @@ class ProductCard extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         product.description,
-                        style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                        style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
-                    const SizedBox(height: 4),
-                    // HSN + Unit
+                    const SizedBox(height: 3),
                     Wrap(
-                      spacing: 6,
+                      spacing: 8,
                       children: [
                         if (product.hsnSac.isNotEmpty)
                           Text(
                             'HSN: ${product.hsnSac}',
-                            style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                            style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
                           ),
                         Text(
                           'Unit: ${product.unit}',
-                          style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                          style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
                         ),
                       ],
                     ),
@@ -122,7 +127,7 @@ class ProductCard extends StatelessWidget {
               ),
               const SizedBox(width: 8),
 
-              // Price + menu — fixed width column, no trailing overflow
+              // Price + menu
               Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -130,13 +135,13 @@ class ProductCard extends StatelessWidget {
                   Text(
                     CurrencyFormatter.format(product.price),
                     style: const TextStyle(
-                      fontSize: 14,
+                      fontSize: 15,
                       fontWeight: FontWeight.w800,
-                      color: AppColors.textPrimary,
+                      color: Color(0xFF0F172A),
                     ),
                   ),
                   PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_horiz, size: 20, color: AppColors.textMuted),
+                    icon: const Icon(Icons.more_horiz, size: 19, color: Color(0xFF94A3B8)),
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
                     onSelected: (val) {
@@ -148,9 +153,9 @@ class ProductCard extends StatelessWidget {
                         value: 'edit',
                         child: Row(
                           children: [
-                            Icon(Icons.edit_outlined, size: 18, color: AppColors.textSecondary),
+                            Icon(Icons.edit_outlined, size: 17, color: Color(0xFF475569)),
                             SizedBox(width: 8),
-                            Text('Edit'),
+                            Text('Edit Product'),
                           ],
                         ),
                       ),
@@ -158,9 +163,9 @@ class ProductCard extends StatelessWidget {
                         value: 'delete',
                         child: Row(
                           children: [
-                            Icon(Icons.delete_outline, size: 18, color: AppColors.error),
+                            Icon(Icons.delete_outline, size: 17, color: AppColors.payableRed),
                             SizedBox(width: 8),
-                            Text('Delete', style: TextStyle(color: AppColors.error)),
+                            Text('Delete Product', style: TextStyle(color: AppColors.payableRed)),
                           ],
                         ),
                       ),

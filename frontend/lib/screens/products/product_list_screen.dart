@@ -5,6 +5,7 @@ import '../../models/product_model.dart';
 import '../../providers/product_provider.dart';
 import '../../widgets/product_card.dart';
 import '../../widgets/empty_state_widget.dart';
+import '../../widgets/cloud_server_status_pill.dart';
 import 'add_edit_product_screen.dart';
 
 class ProductListScreen extends StatefulWidget {
@@ -34,11 +35,18 @@ class _ProductListScreenState extends State<ProductListScreen> {
     }
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text('Product & Service Catalog'),
+        backgroundColor: Colors.white,
+        elevation: 0.5,
+        title: const Text(
+          'Product & Service Catalog',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
+        ),
         actions: [
+          const CloudServerStatusPill(compact: true),
           IconButton(
-            icon: const Icon(Icons.add_box_outlined, color: AppColors.primary),
+            icon: const Icon(Icons.add_box_outlined, color: Color(0xFF2563EB)),
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (ctx) => const AddEditProductScreen()),
@@ -46,96 +54,134 @@ class _ProductListScreenState extends State<ProductListScreen> {
             },
             tooltip: 'Add Item',
           ),
+          const SizedBox(width: 6),
         ],
       ),
-      body: Column(
-        children: [
-          // 1. Search Bar
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: TextField(
-              controller: _searchController,
-              onChanged: (val) {
-                productProvider.setSearchQuery(val);
-              },
-              decoration: InputDecoration(
-                hintText: 'Search products by name, HSN/SAC...',
-                prefixIcon: const Icon(Icons.search, color: AppColors.textMuted),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear, size: 18),
+      body: RefreshIndicator(
+        onRefresh: () => productProvider.fetchProducts(),
+        child: Column(
+          children: [
+            // 1. Search Bar
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              child: Container(
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.02),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 12),
+                      child: Icon(Icons.search_rounded, color: Color(0xFF2563EB), size: 19),
+                    ),
+                    Expanded(
+                      child: TextField(
+                        controller: _searchController,
+                        onChanged: (val) {
+                          productProvider.setSearchQuery(val);
+                        },
+                        style: const TextStyle(fontSize: 13.5, color: Color(0xFF1E293B), fontWeight: FontWeight.w500),
+                        decoration: const InputDecoration(
+                          hintText: 'Search products by name, HSN/SAC...',
+                          hintStyle: TextStyle(fontSize: 13, color: Color(0xFF94A3B8), fontWeight: FontWeight.normal),
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          errorBorder: InputBorder.none,
+                          disabledBorder: InputBorder.none,
+                          focusedErrorBorder: InputBorder.none,
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+                    if (_searchController.text.isNotEmpty)
+                      IconButton(
+                        splashRadius: 18,
+                        icon: const Icon(Icons.cancel_rounded, size: 18, color: Color(0xFF94A3B8)),
                         onPressed: () {
                           _searchController.clear();
                           productProvider.setSearchQuery('');
                         },
-                      )
-                    : null,
-                contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                      ),
+                  ],
+                ),
               ),
             ),
-          ),
 
-          // 2. Filter Chips
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: Row(
-              children: [
-                _buildFilterChip('ALL', 'All Items'),
-                const SizedBox(width: 8),
-                _buildFilterChip('PRODUCT', 'Products (Goods)'),
-                const SizedBox(width: 8),
-                _buildFilterChip('SERVICE', 'Services'),
-              ],
+            // 2. Filter Chips
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+              child: Row(
+                children: [
+                  _buildFilterChip('ALL', 'All Items'),
+                  const SizedBox(width: 8),
+                  _buildFilterChip('PRODUCT', 'Products (Goods)'),
+                  const SizedBox(width: 8),
+                  _buildFilterChip('SERVICE', 'Services'),
+                ],
+              ),
             ),
-          ),
 
-          const SizedBox(height: 6),
+            const SizedBox(height: 6),
 
-          // 3. Products List
-          Expanded(
-            child: products.isEmpty
-                ? EmptyStateWidget(
-                    icon: Icons.inventory_2_outlined,
-                    title: 'No Catalog Items',
-                    description: _searchController.text.isNotEmpty
-                        ? 'Try searching with a different product or HSN code'
-                        : 'Add products or services with HSN/SAC and GST rates for 1-click billing.',
-                    buttonText: 'Add Product / Service',
-                    onButtonPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (ctx) => const AddEditProductScreen()),
-                      );
-                    },
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    itemCount: products.length,
-                    itemBuilder: (ctx, i) {
-                      final product = products[i];
-                      return ProductCard(
-                        product: product,
-                        onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (ctx) => AddEditProductScreen(product: product),
-                            ),
-                          );
-                        },
-                        onEdit: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (ctx) => AddEditProductScreen(product: product),
-                            ),
-                          );
-                        },
-                        onDelete: () {
-                          _confirmDeleteProduct(context, product);
-                        },
-                      );
-                    },
-                  ),
-          ),
-        ],
+            // 3. Products List
+            Expanded(
+              child: products.isEmpty
+                  ? EmptyStateWidget(
+                      icon: Icons.inventory_2_outlined,
+                      title: 'No Catalog Items',
+                      description: _searchController.text.isNotEmpty
+                          ? 'Try searching with a different product or HSN code'
+                          : 'Add products or services with HSN/SAC and GST rates for 1-click billing.',
+                      buttonText: 'Add Product / Service',
+                      onButtonPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (ctx) => const AddEditProductScreen()),
+                        );
+                      },
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      itemCount: products.length,
+                      itemBuilder: (ctx, i) {
+                        final product = products[i];
+                        return ProductCard(
+                          product: product,
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (ctx) => AddEditProductScreen(product: product),
+                              ),
+                            );
+                          },
+                          onEdit: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (ctx) => AddEditProductScreen(product: product),
+                              ),
+                            );
+                          },
+                          onDelete: () {
+                            _confirmDeleteProduct(context, product);
+                          },
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
       ),
       floatingActionButton: FloatingActionButton(
         heroTag: 'addProductFab',
@@ -144,7 +190,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
             MaterialPageRoute(builder: (ctx) => const AddEditProductScreen()),
           );
         },
-        backgroundColor: AppColors.accent,
+        backgroundColor: AppColors.vyaparPink,
         foregroundColor: Colors.white,
         child: const Icon(Icons.add_shopping_cart_rounded),
       ),
@@ -156,12 +202,16 @@ class _ProductListScreenState extends State<ProductListScreen> {
     return ChoiceChip(
       label: Text(label),
       selected: isSelected,
-      selectedColor: AppColors.primary.withValues(alpha: 0.12),
-      backgroundColor: AppColors.surface,
+      selectedColor: const Color(0xFFEFF6FF),
+      backgroundColor: Colors.white,
+      side: BorderSide(
+        color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0),
+        width: 1,
+      ),
       labelStyle: TextStyle(
         fontSize: 12,
         fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-        color: isSelected ? AppColors.primary : AppColors.textSecondary,
+        color: isSelected ? const Color(0xFF2563EB) : const Color(0xFF64748B),
       ),
       onSelected: (val) {
         setState(() {
@@ -175,20 +225,24 @@ class _ProductListScreenState extends State<ProductListScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Product?'),
-        content: Text('Are you sure you want to delete ${product.name}?'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Delete Product?', style: TextStyle(fontWeight: FontWeight.w800)),
+        content: Text('Are you sure you want to delete "${product.name}"?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B))),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.payableRed),
             onPressed: () {
               Provider.of<ProductProvider>(context, listen: false).deleteProduct(product.id);
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Product ${product.name} deleted')),
+                SnackBar(
+                  content: Text('Product "${product.name}" deleted'),
+                  behavior: SnackBarBehavior.floating,
+                ),
               );
             },
             child: const Text('Delete'),

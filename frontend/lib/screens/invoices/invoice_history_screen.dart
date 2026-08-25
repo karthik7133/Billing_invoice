@@ -5,6 +5,7 @@ import '../../core/utils/currency_formatter.dart';
 import '../../providers/invoice_provider.dart';
 import '../../widgets/invoice_card.dart';
 import '../../widgets/empty_state_widget.dart';
+import '../../widgets/cloud_server_status_pill.dart';
 import 'create_invoice_screen.dart';
 import 'invoice_detail_screen.dart';
 import 'invoice_pdf_preview_screen.dart';
@@ -44,11 +45,18 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
     }
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text('Invoice History'),
+        backgroundColor: Colors.white,
+        elevation: 0.5,
+        title: const Text(
+          'Invoice History',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
+        ),
         actions: [
+          const CloudServerStatusPill(compact: true),
           IconButton(
-            icon: const Icon(Icons.add, color: AppColors.primary),
+            icon: const Icon(Icons.add, color: Color(0xFF2563EB)),
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (ctx) => const CreateInvoiceScreen()),
@@ -56,19 +64,20 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
             },
             tooltip: 'Create Invoice',
           ),
+          const SizedBox(width: 6),
         ],
       ),
       body: Column(
         children: [
           // 1. Search Bar
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             child: Container(
-              height: 46,
+              height: 44,
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFE2E8F0), width: 1.0),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.02),
@@ -82,13 +91,13 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
                 children: [
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 12),
-                    child: Icon(Icons.search_rounded, color: Color(0xFF2563EB), size: 20),
+                    child: Icon(Icons.search_rounded, color: Color(0xFF2563EB), size: 19),
                   ),
                   Expanded(
                     child: TextField(
                       controller: _searchController,
                       onChanged: (val) => invoiceProvider.setSearchQuery(val),
-                      style: const TextStyle(fontSize: 14, color: Color(0xFF1E293B), fontWeight: FontWeight.w500),
+                      style: const TextStyle(fontSize: 13.5, color: Color(0xFF1E293B), fontWeight: FontWeight.w500),
                       decoration: const InputDecoration(
                         hintText: 'Search by invoice number or customer...',
                         hintStyle: TextStyle(fontSize: 13, color: Color(0xFF94A3B8), fontWeight: FontWeight.normal),
@@ -120,7 +129,7 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
           // 2. Status Tabs Horizontal Scroll
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
             child: Row(
               children: [
                 _buildStatusTab('ALL', 'All Invoices'),
@@ -140,21 +149,28 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
 
           // 3. Mini Aggregate Summary Bar
           Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.border),
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.02),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _buildSummaryStat('Total Amount', CurrencyFormatter.format(filteredTotal), AppColors.textPrimary),
-                Container(height: 24, width: 1, color: AppColors.divider),
-                _buildSummaryStat('Paid', CurrencyFormatter.format(filteredPaid), AppColors.success),
-                Container(height: 24, width: 1, color: AppColors.divider),
-                _buildSummaryStat('Due / Balance', CurrencyFormatter.format(filteredDue), AppColors.error),
+                _buildSummaryStat('Total Sales', CurrencyFormatter.format(filteredTotal), const Color(0xFF0F172A)),
+                Container(height: 24, width: 1, color: const Color(0xFFE2E8F0)),
+                _buildSummaryStat('Total Paid', CurrencyFormatter.format(filteredPaid), AppColors.receivableGreen),
+                Container(height: 24, width: 1, color: const Color(0xFFE2E8F0)),
+                _buildSummaryStat('Total Due', CurrencyFormatter.format(filteredDue), AppColors.payableRed),
               ],
             ),
           ),
@@ -178,7 +194,7 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
                 : RefreshIndicator(
                     onRefresh: () => invoiceProvider.fetchInvoices(),
                     child: ListView.separated(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                       itemCount: invoices.length,
                       separatorBuilder: (ctx, i) => const SizedBox(height: 10),
                       itemBuilder: (ctx, i) {
@@ -197,7 +213,8 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 content: Text('Invoice ${invoice.invoiceNumber} marked as PAID'),
-                                backgroundColor: AppColors.success,
+                                backgroundColor: AppColors.receivableGreen,
+                                behavior: SnackBarBehavior.floating,
                               ),
                             );
                           },
@@ -223,12 +240,16 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
     return ChoiceChip(
       label: Text(label),
       selected: isSelected,
-      selectedColor: AppColors.primary.withValues(alpha: 0.15),
-      backgroundColor: AppColors.surface,
+      selectedColor: const Color(0xFFEFF6FF),
+      backgroundColor: Colors.white,
+      side: BorderSide(
+        color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0),
+        width: 1,
+      ),
       labelStyle: TextStyle(
         fontSize: 12,
         fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-        color: isSelected ? AppColors.primary : AppColors.textSecondary,
+        color: isSelected ? const Color(0xFF2563EB) : const Color(0xFF64748B),
       ),
       onSelected: (val) {
         setState(() {
@@ -242,11 +263,11 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
   Widget _buildSummaryStat(String label, String value, Color color) {
     return Column(
       children: [
-        Text(label, style: const TextStyle(fontSize: 10, color: AppColors.textMuted, fontWeight: FontWeight.w600)),
+        Text(label, style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
         const SizedBox(height: 2),
         Text(
           value,
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: color),
+          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: color),
         ),
       ],
     );

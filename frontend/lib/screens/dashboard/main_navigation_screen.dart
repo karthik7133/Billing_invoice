@@ -8,7 +8,9 @@ import '../../providers/business_provider.dart';
 import '../../providers/customer_provider.dart';
 import '../../providers/invoice_provider.dart';
 import '../../providers/product_provider.dart';
+import '../../services/backend_sync_service.dart';
 import '../../widgets/metric_card.dart';
+import '../../widgets/cloud_server_status_pill.dart';
 import 'dashboard_screen.dart';
 import '../products/product_list_screen.dart';
 import '../business/business_profile_screen.dart';
@@ -29,16 +31,44 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Auto-load all required providers upon launching the main navigation screen
-      context.read<CustomerProvider>().fetchCustomers();
-      context.read<InvoiceProvider>().fetchInvoices();
-      context.read<ProductProvider>().fetchProducts();
-      context.read<BusinessProvider>().fetchBusinessProfile();
+      // Auto-load cached data immediately + trigger live sync
+      _refreshAllData();
+
+      // Register listener: if backend was sleeping and wakes up, auto-sync all data!
+      BackendSyncService.instance.addOnAwakeCallback(_onServerAwake);
     });
   }
 
-  // 4 tabs matching user's reference screenshots:
-  // HOME, DASHBOARD, ITEMS, MENU
+  void _onServerAwake() {
+    if (mounted) {
+      debugPrint('[MainNavigation] Server woke up! Triggering automatic data refresh...');
+      _refreshAllData();
+    }
+  }
+
+  void _refreshAllData() {
+    final busP = context.read<BusinessProvider>();
+    final custP = context.read<CustomerProvider>();
+    final prodP = context.read<ProductProvider>();
+    final invP = context.read<InvoiceProvider>();
+    final authP = context.read<AuthProvider>();
+
+    BackendSyncService.instance.forceSync(
+      authProvider: authP,
+      businessProvider: busP,
+      customerProvider: custP,
+      productProvider: prodP,
+      invoiceProvider: invP,
+    );
+  }
+
+  @override
+  void dispose() {
+    BackendSyncService.instance.removeOnAwakeCallback(_onServerAwake);
+    super.dispose();
+  }
+
+  // 4 tabs: HOME, DASHBOARD, ITEMS, MENU
   final List<Widget> _screens = const [
     DashboardScreen(),
     _AnalyticsDashboardScreen(),
@@ -63,7 +93,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 }
 
-// ─── 4-Tab Bottom Navigation Bar (HOME, DASHBOARD, ITEMS, MENU) ───────────────
+// ─── 4-Tab Bottom Navigation Bar ─────────────────────────────────────────────
 
 class _VyaparBottomNav extends StatelessWidget {
   final int currentIndex;
@@ -81,7 +111,7 @@ class _VyaparBottomNav extends StatelessWidget {
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 16,
             offset: const Offset(0, -3),
           ),
@@ -91,7 +121,7 @@ class _VyaparBottomNav extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Row(
             children: [
               _NavItem(
@@ -107,7 +137,7 @@ class _VyaparBottomNav extends StatelessWidget {
                 currentIndex: currentIndex,
                 icon: Icons.bar_chart_outlined,
                 activeIcon: Icons.bar_chart_rounded,
-                label: 'DASHBOARD',
+                label: 'ANALYTICS',
                 onTap: onTap,
               ),
               _NavItem(
@@ -163,25 +193,33 @@ class _NavItem extends StatelessWidget {
           HapticFeedback.selectionClick();
           onTap(index);
         },
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              isSelected ? activeIcon : icon,
-              color: color,
-              size: 24,
-            ),
-            const SizedBox(height: 3),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          decoration: BoxDecoration(
+            color: isSelected ? const Color(0xFFEFF6FF) : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isSelected ? activeIcon : icon,
                 color: color,
-                letterSpacing: 0.2,
+                size: 23,
               ),
-            ),
-          ],
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                  color: color,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -199,7 +237,7 @@ class _AnalyticsDashboardScreen extends StatelessWidget {
     final metrics = invoiceProvider.getDashboardMetrics();
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7FB),
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0.5,
@@ -207,92 +245,187 @@ class _AnalyticsDashboardScreen extends StatelessWidget {
           'Business Analytics',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 12),
+            child: CloudServerStatusPill(compact: true),
+          ),
+        ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: MetricCard(
-                    title: "Today's Sales",
-                    value: CurrencyFormatter.format(metrics.todaySales),
-                    subtitle: "Month: ${CurrencyFormatter.formatCompact(metrics.monthSales)}",
-                    icon: Icons.trending_up_rounded,
-                    accentColor: AppColors.success,
+      body: RefreshIndicator(
+        onRefresh: () async {
+          final busP = context.read<BusinessProvider>();
+          final custP = context.read<CustomerProvider>();
+          final prodP = context.read<ProductProvider>();
+          final invP = context.read<InvoiceProvider>();
+          await BackendSyncService.instance.forceSync(
+            businessProvider: busP,
+            customerProvider: custP,
+            productProvider: prodP,
+            invoiceProvider: invP,
+          );
+        },
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Sales & Dues Metric Cards Grid
+              Row(
+                children: [
+                  Expanded(
+                    child: MetricCard(
+                      title: "Today's Sales",
+                      value: CurrencyFormatter.format(metrics.todaySales),
+                      subtitle: "Month: ${CurrencyFormatter.formatCompact(metrics.monthSales)}",
+                      icon: Icons.trending_up_rounded,
+                      accentColor: AppColors.success,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: MetricCard(
-                    title: 'Unpaid / Due',
-                    value: CurrencyFormatter.format(metrics.totalUnpaid),
-                    subtitle: '${metrics.unpaidCount} Pending bills',
-                    icon: Icons.pending_actions_rounded,
-                    accentColor: AppColors.error,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: MetricCard(
+                      title: 'Unpaid / Due',
+                      value: CurrencyFormatter.format(metrics.totalUnpaid),
+                      subtitle: '${metrics.unpaidCount} Pending bills',
+                      icon: Icons.pending_actions_rounded,
+                      accentColor: AppColors.payableRed,
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: MetricCard(
-                    title: 'Total Invoices',
-                    value: '${metrics.totalInvoices}',
-                    subtitle: '${metrics.paidCount} Fully Paid',
-                    icon: Icons.receipt_long_rounded,
-                    accentColor: AppColors.primary,
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: MetricCard(
+                      title: 'Total Invoices',
+                      value: '${metrics.totalInvoices}',
+                      subtitle: '${metrics.paidCount} Fully Paid',
+                      icon: Icons.receipt_long_rounded,
+                      accentColor: AppColors.electricBlue,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: MetricCard(
-                    title: 'All Time Sales',
-                    value: CurrencyFormatter.format(metrics.totalSales),
-                    subtitle: 'Active turnover',
-                    icon: Icons.account_balance_wallet_outlined,
-                    accentColor: AppColors.secondary,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: MetricCard(
+                      title: 'All Time Turnover',
+                      value: CurrencyFormatter.format(metrics.totalSales),
+                      subtitle: 'Active turnover',
+                      icon: Icons.account_balance_wallet_outlined,
+                      accentColor: AppColors.secondary,
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Quick Actions',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
-            ),
-            const SizedBox(height: 10),
-            ListTile(
-              tileColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              leading: const Icon(Icons.history_rounded, color: Color(0xFF2563EB)),
-              title: const Text('View All Invoices & History'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const InvoiceHistoryScreen()),
-                );
-              },
-            ),
-            const SizedBox(height: 10),
-            ListTile(
-              tileColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              leading: const Icon(Icons.post_add_rounded, color: AppColors.vyaparPink),
-              title: const Text('Create New Sale / Tax Invoice'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const CreateInvoiceScreen()),
-                );
-              },
-            ),
-          ],
+                ],
+              ),
+              const SizedBox(height: 22),
+              const Text(
+                'Quick Reports & Actions',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
+              ),
+              const SizedBox(height: 12),
+              _buildAnalyticsTile(
+                icon: Icons.history_rounded,
+                iconColor: const Color(0xFF2563EB),
+                iconBg: const Color(0xFFEFF6FF),
+                title: 'View All Invoices & Sales Records',
+                subtitle: 'Filter by date, payment status, and export PDF',
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const InvoiceHistoryScreen()),
+                  );
+                },
+              ),
+              const SizedBox(height: 10),
+              _buildAnalyticsTile(
+                icon: Icons.post_add_rounded,
+                iconColor: AppColors.vyaparPink,
+                iconBg: AppColors.vyaparPinkLight,
+                title: 'Create New GST Sale / Invoice',
+                subtitle: 'Generate tax compliant invoice with auto calculations',
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const CreateInvoiceScreen()),
+                  );
+                },
+              ),
+              const SizedBox(height: 10),
+              _buildAnalyticsTile(
+                icon: Icons.sync_rounded,
+                iconColor: const Color(0xFF0D9488),
+                iconBg: const Color(0xFFF0FDFA),
+                title: 'Synchronize Cloud Database',
+                subtitle: 'Ensure all local and cloud billing records are synced',
+                onTap: () {
+                  final busP = context.read<BusinessProvider>();
+                  final custP = context.read<CustomerProvider>();
+                  final prodP = context.read<ProductProvider>();
+                  final invP = context.read<InvoiceProvider>();
+                  BackendSyncService.instance.forceSync(
+                    businessProvider: busP,
+                    customerProvider: custP,
+                    productProvider: prodP,
+                    invoiceProvider: invP,
+                  );
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Cloud synchronization triggered!'),
+                      behavior: SnackBarBehavior.floating,
+                      backgroundColor: AppColors.success,
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildAnalyticsTile({
+    required IconData icon,
+    required Color iconColor,
+    required Color iconBg,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        leading: Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: iconBg,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: iconColor, size: 22),
+        ),
+        title: Text(
+          title,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+        ),
+        trailing: const Icon(Icons.chevron_right, size: 20, color: Color(0xFF94A3B8)),
+        onTap: onTap,
       ),
     );
   }
@@ -309,7 +442,7 @@ class _MenuScreen extends StatelessWidget {
     final auth = Provider.of<AuthProvider>(context, listen: false);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7FB),
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0.5,
@@ -317,6 +450,12 @@ class _MenuScreen extends StatelessWidget {
           'Menu & Settings',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 12),
+            child: CloudServerStatusPill(compact: true),
+          ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -326,17 +465,24 @@ class _MenuScreen extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(color: const Color(0xFFE2E8F0)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
             child: Row(
               children: [
                 Container(
-                  width: 50,
-                  height: 50,
+                  width: 52,
+                  height: 52,
                   decoration: BoxDecoration(
                     color: const Color(0xFFE8F1FC),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(14),
                   ),
                   child: Center(
                     child: Text(
@@ -356,8 +502,8 @@ class _MenuScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        business.gstin.isNotEmpty ? 'GSTIN: ${business.gstin}' : 'GST Billing Active',
-                        style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                        business.gstin.isNotEmpty ? 'GSTIN: ${business.gstin}' : 'GST Billing Engine Active',
+                        style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
                       ),
                     ],
                   ),
@@ -373,11 +519,11 @@ class _MenuScreen extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           _buildMenuTile(
             icon: Icons.store_outlined,
             title: 'Business Profile & Bank Details',
-            subtitle: 'Manage GSTIN, Address, Bank A/C, UPI',
+            subtitle: 'Manage GSTIN, Address, Bank A/C, UPI ID',
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const BusinessProfileScreen()),
@@ -386,8 +532,8 @@ class _MenuScreen extends StatelessWidget {
           ),
           _buildMenuTile(
             icon: Icons.receipt_long_outlined,
-            title: 'All Invoices & Reports',
-            subtitle: 'View, filter and export sales records',
+            title: 'All Invoices & Sales Ledger',
+            subtitle: 'View, filter, print and share PDF invoices',
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const InvoiceHistoryScreen()),
@@ -395,10 +541,34 @@ class _MenuScreen extends StatelessWidget {
             },
           ),
           _buildMenuTile(
+            icon: Icons.cloud_sync_outlined,
+            title: 'Cloud Auto-Sync & Reconnect',
+            subtitle: 'Force refresh backend data and verify cloud connection',
+            onTap: () {
+              final busP = Provider.of<BusinessProvider>(context, listen: false);
+              final custP = Provider.of<CustomerProvider>(context, listen: false);
+              final prodP = Provider.of<ProductProvider>(context, listen: false);
+              final invP = Provider.of<InvoiceProvider>(context, listen: false);
+              BackendSyncService.instance.forceSync(
+                businessProvider: busP,
+                customerProvider: custP,
+                productProvider: prodP,
+                invoiceProvider: invP,
+              );
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Syncing with Render cloud backend...'),
+                  behavior: SnackBarBehavior.floating,
+                  backgroundColor: AppColors.electricBlue,
+                ),
+              );
+            },
+          ),
+          _buildMenuTile(
             icon: Icons.logout_rounded,
             title: 'Sign Out',
-            subtitle: 'Log out of your current account',
-            color: Colors.redAccent,
+            subtitle: 'Log out and clear local cached session',
+            color: AppColors.payableRed,
             onTap: () {
               auth.logout();
             },
@@ -419,15 +589,22 @@ class _MenuScreen extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: ListTile(
         leading: Container(
-          padding: const EdgeInsets.all(8),
+          padding: const EdgeInsets.all(9),
           decoration: BoxDecoration(
             color: (color ?? const Color(0xFF2563EB)).withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(icon, color: color ?? const Color(0xFF2563EB), size: 20),
         ),

@@ -8,22 +8,38 @@ import '../core/utils/gst_calculator.dart';
 import '../core/utils/number_to_words.dart';
 import '../core/api/api_client.dart';
 import '../core/api/endpoints.dart';
+import '../services/local_cache_service.dart';
 
 class InvoiceProvider with ChangeNotifier {
   final ApiClient _api = ApiClient();
+  final LocalCacheService _cache = LocalCacheService();
   final _uuid = const Uuid();
 
   List<InvoiceModel> _invoices = [];
   bool _isLoading = false;
   String? _errorMessage;
+  bool _isInitialized = false;
 
   String _statusFilter = 'ALL';
   String _searchQuery = '';
   DateTime? _startDate;
   DateTime? _endDate;
 
-  List<InvoiceModel> get invoices {
+  InvoiceProvider() {
+    _initFromCache();
+  }
 
+  Future<void> _initFromCache() async {
+    if (_isInitialized) return;
+    final cached = await _cache.loadInvoices();
+    if (cached.isNotEmpty && _invoices.isEmpty) {
+      _invoices = cached;
+      notifyListeners();
+    }
+    _isInitialized = true;
+  }
+
+  List<InvoiceModel> get invoices {
     return _invoices.where((inv) {
       // Status filter
       if (_statusFilter != 'ALL') {
@@ -59,6 +75,10 @@ class InvoiceProvider with ChangeNotifier {
   String get searchQuery => _searchQuery;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
+
+  /// Unfiltered full list — use this when you need to find a specific invoice
+  /// regardless of current search/filter state (e.g. in InvoiceDetailScreen).
+  List<InvoiceModel> get allInvoices => List.unmodifiable(_invoices);
 
   void setStatusFilter(String status) {
     _statusFilter = status;
@@ -119,6 +139,7 @@ class InvoiceProvider with ChangeNotifier {
   }
 
   Future<void> fetchInvoices() async {
+    await _initFromCache();
     _isLoading = true;
     notifyListeners();
 
@@ -130,6 +151,7 @@ class InvoiceProvider with ChangeNotifier {
           .map((i) => InvoiceModel.fromJson(i as Map<String, dynamic>))
           .toList();
       _invoices = list;
+      await _cache.saveInvoices(_invoices);
     }
     notifyListeners();
   }
@@ -145,6 +167,8 @@ class InvoiceProvider with ChangeNotifier {
     String? invoiceNumber,
     DateTime? invoiceDate,
     DateTime? dueDate,
+    String origin = 'AP',
+    List<String> attachments = const [],
     double invoiceDiscount = 0,
     String invoiceDiscountType = 'FIXED',
     double otherCharges = 0,
@@ -170,8 +194,9 @@ class InvoiceProvider with ChangeNotifier {
       otherCharges: otherCharges,
     );
 
-    final finalInvNum = invoiceNumber ??
-        '${business.invoicePrefix}-${business.nextInvoiceNumber.toString().padLeft(4, '0')}';
+    final finalInvNum = (invoiceNumber != null && invoiceNumber.trim().isNotEmpty)
+        ? invoiceNumber.trim()
+        : '${business.invoicePrefix}-${business.nextInvoiceNumber.toString().padLeft(4, '0')}';
 
     final paid = amountPaid;
     final balance = (calculated.grandTotal - paid).clamp(0.0, calculated.grandTotal);
@@ -225,6 +250,8 @@ class InvoiceProvider with ChangeNotifier {
       businessSnapshot: business,
       invoiceDate: date,
       dueDate: due,
+      origin: origin,
+      attachments: attachments,
       items: parsedItems,
       isInterState: calculated.isInterState,
       subtotal: calculated.subtotal,
@@ -250,29 +277,114 @@ class InvoiceProvider with ChangeNotifier {
       amountInWords: words,
     );
 
-    // Save to API in background if possible
-    _api.post(Endpoints.invoices, {
-      'customerId': customer.id,
-      'customerName': customer.name,
-      'invoiceNumber': finalInvNum,
-      'invoiceDate': date.toIso8601String(),
-      'dueDate': due.toIso8601String(),
-      'items': rawItems,
-      'invoiceDiscount': invoiceDiscount,
-      'invoiceDiscountType': invoiceDiscountType,
-      'otherCharges': otherCharges,
-      'status': finalStatus,
-      'amountPaid': paid,
-      'paymentType': paymentType,
-      'description': description,
-      'notes': notes,
-      'termsAndConditions': termsAndConditions,
-    });
+    InvoiceModel finalInvoice = invoice;
 
-    _invoices.insert(0, invoice);
+    try {
+      // Save to API
+      final res = await _api.post(Endpoints.invoices, {
+        'customerId': customer.id,
+        'customerName': customer.name,
+        'invoiceNumber': finalInvNum,
+        'invoiceDate': date.toIso8601String(),
+        'dueDate': due.toIso8601String(),
+        'origin': origin,
+        'attachments': attachments,
+        'items': rawItems,
+        'invoiceDiscount': invoiceDiscount,
+        'invoiceDiscountType': invoiceDiscountType,
+        'otherCharges': otherCharges,
+        'status': finalStatus,
+        'amountPaid': paid,
+        'paymentType': paymentType,
+        'description': description,
+        'notes': notes,
+        'termsAndConditions': termsAndConditions,
+      });
+
+      if (res.success && res.data != null && res.data['invoice'] != null) {
+        finalInvoice = InvoiceModel.fromJson(res.data['invoice'] as Map<String, dynamic>);
+      }
+    } catch (e) {
+      debugPrint('[InvoiceProvider] createInvoice error: $e');
+    }
+
+    _invoices.insert(0, finalInvoice);
+    await _cache.saveInvoices(_invoices);
     _isLoading = false;
     notifyListeners();
-    return invoice;
+    return finalInvoice;
+  }
+
+  /// Upload photo/attachment to Cloudinary via backend /api/upload
+  Future<String?> uploadAttachment(dynamic file) async {
+    try {
+      ApiResponse res;
+      if (file.path != null && file.path.isNotEmpty) {
+        res = await _api.uploadFile(Endpoints.upload, file.path);
+      } else {
+        final bytes = await file.readAsBytes();
+        res = await _api.uploadBytes(Endpoints.upload, bytes, file.name);
+      }
+
+      if (res.success && res.data != null && res.data['url'] != null) {
+        return res.data['url'].toString();
+      }
+    } catch (e) {
+      debugPrint('[InvoiceProvider] uploadAttachment error: $e');
+    }
+    return null;
+  }
+
+  Future<bool> updateInvoiceNumber(String invoiceId, String newNumber) async {
+    final cleanNum = newNumber.trim();
+    if (cleanNum.isEmpty) return false;
+
+    // Find by id first, then fallback to id contained in any invoice
+    int index = _invoices.indexWhere((inv) => inv.id == invoiceId);
+    if (index == -1) return false;
+
+    final oldInvoiceNumber = _invoices[index].invoiceNumber;
+
+    // Optimistically update locally first
+    _invoices[index] = _invoices[index].copyWith(invoiceNumber: cleanNum);
+    await _cache.saveInvoices(_invoices);
+    notifyListeners();
+
+    try {
+      // Try PUT by id first (works when id is a real MongoDB _id)
+      ApiResponse res = await _api.put('${Endpoints.invoices}/$invoiceId', {
+        'invoiceNumber': cleanNum,
+      });
+
+      // If 404 (UUID not known to backend), retry using the old invoice number as identifier
+      if (!res.success && (res.statusCode == 404 || res.statusCode == null)) {
+        debugPrint('[InvoiceProvider] PUT by id failed ($invoiceId), retrying by invoiceNumber ($oldInvoiceNumber)...');
+        res = await _api.put('${Endpoints.invoices}/$oldInvoiceNumber', {
+          'invoiceNumber': cleanNum,
+        });
+      }
+
+      if (res.success && res.data != null && res.data['invoice'] != null) {
+        final updatedFromBackend = InvoiceModel.fromJson(res.data['invoice'] as Map<String, dynamic>);
+        // The backend returns the real MongoDB _id — update local list to use it
+        final idx = _invoices.indexWhere(
+          (inv) => inv.id == invoiceId || inv.invoiceNumber == cleanNum || inv.id == updatedFromBackend.id,
+        );
+        if (idx != -1) {
+          _invoices[idx] = updatedFromBackend;
+          await _cache.saveInvoices(_invoices);
+          notifyListeners();
+          debugPrint('[InvoiceProvider] Invoice number updated in DB. MongoDB id: ${updatedFromBackend.id}');
+        }
+        return true;
+      }
+
+      debugPrint('[InvoiceProvider] updateInvoiceNumber failed: ${res.message}');
+      return res.success;
+    } catch (e) {
+      debugPrint('[InvoiceProvider] updateInvoiceNumber error: $e');
+      return false;
+    }
   }
 
   Future<void> markInvoiceAsPaid(String invoiceId) async {
@@ -284,8 +396,14 @@ class InvoiceProvider with ChangeNotifier {
         balanceDue: 0,
         status: 'PAID',
       );
-      _api.post('${Endpoints.invoices}/$invoiceId/mark-paid', {});
+      await _cache.saveInvoices(_invoices);
       notifyListeners();
+
+      try {
+        await _api.post('${Endpoints.invoices}/$invoiceId/mark-paid', {});
+      } catch (e) {
+        debugPrint('[InvoiceProvider] markInvoiceAsPaid error: $e');
+      }
     }
   }
 
@@ -308,18 +426,29 @@ class InvoiceProvider with ChangeNotifier {
         status: newStatus,
       );
 
-      _api.put('${Endpoints.invoices}/$invoiceId/status', {
-        'amountPaid': newPaid,
-        'status': newStatus,
-      });
+      await _cache.saveInvoices(_invoices);
       notifyListeners();
+
+      try {
+        await _api.put('${Endpoints.invoices}/$invoiceId/status', {
+          'amountPaid': newPaid,
+          'status': newStatus,
+        });
+      } catch (e) {
+        debugPrint('[InvoiceProvider] updatePayment error: $e');
+      }
     }
   }
 
   Future<void> deleteInvoice(String invoiceId) async {
     _invoices.removeWhere((inv) => inv.id == invoiceId);
-    _api.delete('${Endpoints.invoices}/$invoiceId');
+    await _cache.saveInvoices(_invoices);
     notifyListeners();
+
+    try {
+      await _api.delete('${Endpoints.invoices}/$invoiceId');
+    } catch (e) {
+      debugPrint('[InvoiceProvider] deleteInvoice error: $e');
+    }
   }
 }
-

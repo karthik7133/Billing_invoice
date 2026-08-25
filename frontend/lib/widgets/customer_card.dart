@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/customer_model.dart';
 import '../core/constants/app_colors.dart';
+import '../core/utils/currency_formatter.dart';
 
 class CustomerCard extends StatelessWidget {
   final CustomerModel customer;
@@ -18,100 +19,112 @@ class CustomerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final badgeColor = customer.isRegistered ? AppColors.infoBg : AppColors.warningBg;
-    final badgeTextColor = customer.isRegistered ? AppColors.info : AppColors.warning;
-    final avatarBg = customer.isRegistered
-        ? AppColors.primary.withValues(alpha: 0.12)
-        : AppColors.secondary.withValues(alpha: 0.12);
-    final avatarFg = customer.isRegistered ? AppColors.primary : AppColors.secondary;
+    final isRegistered = customer.isRegistered;
+    final balance = customer.balance;
+    final isReceivable = balance >= 0;
+    final balanceAbs = balance.abs();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Avatar
-              CircleAvatar(
-                radius: 22,
-                backgroundColor: avatarBg,
-                foregroundColor: avatarFg,
-                child: Text(
-                  customer.name.isNotEmpty ? customer.name[0].toUpperCase() : 'C',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              // Avatar with Initials
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: isRegistered ? const Color(0xFFEFF6FF) : const Color(0xFFF0FDF4),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Center(
+                  child: Text(
+                    customer.name.isNotEmpty ? customer.name[0].toUpperCase() : 'C',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 17,
+                      color: isRegistered ? const Color(0xFF2563EB) : const Color(0xFF16A34A),
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
 
-              // Content (flexible so it never overflows)
+              // Content
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Name + Badge in a Wrap so badge drops below if needed
-                    Wrap(
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      spacing: 6,
-                      runSpacing: 2,
+                    Row(
                       children: [
-                        Text(
-                          customer.name,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 15,
-                            color: AppColors.textPrimary,
+                        Flexible(
+                          child: Text(
+                            customer.name,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                              color: Color(0xFF0F172A),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
+                        const SizedBox(width: 6),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
                           decoration: BoxDecoration(
-                            color: badgeColor,
-                            borderRadius: BorderRadius.circular(4),
+                            color: isRegistered ? const Color(0xFFEFF6FF) : const Color(0xFFFFFBEB),
+                            borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
-                            customer.isRegistered ? 'B2B' : 'B2C',
+                            isRegistered ? 'B2B' : 'B2C',
                             style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              color: badgeTextColor,
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w800,
+                              color: isRegistered ? const Color(0xFF2563EB) : const Color(0xFFD97706),
                             ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 4),
-                    // Phone + State row
+                    const SizedBox(height: 3),
                     Row(
                       children: [
                         if (customer.phone.isNotEmpty) ...[
-                          const Icon(Icons.phone_outlined, size: 12, color: AppColors.textMuted),
+                          const Icon(Icons.phone_outlined, size: 12, color: Color(0xFF94A3B8)),
                           const SizedBox(width: 3),
                           Text(
                             customer.phone,
-                            style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                            style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
                             overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(width: 8),
-                          const Text('·', style: TextStyle(color: AppColors.textMuted)),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 6),
+                          const Text('·', style: TextStyle(color: Color(0xFFCBD5E1))),
+                          const SizedBox(width: 6),
                         ],
-                        const Icon(Icons.location_on_outlined, size: 12, color: AppColors.textMuted),
+                        const Icon(Icons.location_on_outlined, size: 12, color: Color(0xFF94A3B8)),
                         const SizedBox(width: 3),
                         Flexible(
                           child: Text(
-                            customer.state,
-                            style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                            customer.state.isNotEmpty ? customer.state : 'State not set',
+                            style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -119,13 +132,13 @@ class CustomerCard extends StatelessWidget {
                       ],
                     ),
                     if (customer.gstin.isNotEmpty) ...[
-                      const SizedBox(height: 3),
+                      const SizedBox(height: 2),
                       Text(
                         'GSTIN: ${customer.gstin}',
                         style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: AppColors.textSecondary,
+                          color: Color(0xFF64748B),
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -135,9 +148,38 @@ class CustomerCard extends StatelessWidget {
                 ),
               ),
 
-              // Actions menu
+              // Balance & Actions
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    CurrencyFormatter.format(balanceAbs),
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: isReceivable ? AppColors.receivableGreen : AppColors.payableRed,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    isReceivable
+                        ? (balanceAbs > 0 ? "You'll Get" : 'Settled')
+                        : "You'll Give",
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                      color: isReceivable
+                          ? (balanceAbs > 0 ? AppColors.receivableGreen : const Color(0xFF94A3B8))
+                          : AppColors.payableRed,
+                    ),
+                  ),
+                ],
+              ),
+
               PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert, color: AppColors.textMuted, size: 20),
+                icon: const Icon(Icons.more_vert, color: Color(0xFF94A3B8), size: 19),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
                 onSelected: (val) {
                   if (val == 'edit' && onEdit != null) onEdit!();
                   if (val == 'delete' && onDelete != null) onDelete!();
@@ -147,9 +189,9 @@ class CustomerCard extends StatelessWidget {
                     value: 'edit',
                     child: Row(
                       children: [
-                        Icon(Icons.edit_outlined, size: 18, color: AppColors.textSecondary),
+                        Icon(Icons.edit_outlined, size: 17, color: Color(0xFF475569)),
                         SizedBox(width: 8),
-                        Text('Edit'),
+                        Text('Edit Customer'),
                       ],
                     ),
                   ),
@@ -157,9 +199,9 @@ class CustomerCard extends StatelessWidget {
                     value: 'delete',
                     child: Row(
                       children: [
-                        Icon(Icons.delete_outline, size: 18, color: AppColors.error),
+                        Icon(Icons.delete_outline, size: 17, color: AppColors.payableRed),
                         SizedBox(width: 8),
-                        Text('Delete', style: TextStyle(color: AppColors.error)),
+                        Text('Delete Customer', style: TextStyle(color: AppColors.payableRed)),
                       ],
                     ),
                   ),

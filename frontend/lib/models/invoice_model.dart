@@ -109,6 +109,8 @@ class InvoiceModel {
   final BusinessModel businessSnapshot;
   final DateTime invoiceDate;
   final DateTime dueDate;
+  final String origin; // e.g. 'AP', 'ORRISA', 'GUJARAT', 'KARNATAKA'
+  final List<String> attachments; // Cloudinary URLs
   final List<InvoiceItemModel> items;
   final bool isInterState;
   final double subtotal;
@@ -142,6 +144,8 @@ class InvoiceModel {
     required this.businessSnapshot,
     required this.invoiceDate,
     required this.dueDate,
+    this.origin = 'AP',
+    this.attachments = const [],
     required this.items,
     this.isInterState = false,
     required this.subtotal,
@@ -201,6 +205,9 @@ class InvoiceModel {
     final bDue = (json['balanceDue'] as num?)?.toDouble() ?? 0.0;
     final exAmount = (json['excessAmount'] as num?)?.toDouble() ?? (aPaid > gTotal ? aPaid - gTotal : 0.0);
 
+    var rawAttachments = json['attachments'] as List<dynamic>? ?? [];
+    List<String> parsedAttachments = rawAttachments.map((a) => a.toString()).toList();
+
     return InvoiceModel(
       id: json['_id']?.toString() ?? json['id']?.toString() ?? '',
       invoiceNumber: json['invoiceNumber']?.toString() ?? 'INV-0001',
@@ -209,6 +216,8 @@ class InvoiceModel {
       businessSnapshot: busSnap,
       invoiceDate: invDate,
       dueDate: due,
+      origin: json['origin']?.toString() ?? 'AP',
+      attachments: parsedAttachments,
       items: parsedItems,
       isInterState: json['isInterState'] == true,
       subtotal: (json['subtotal'] as num?)?.toDouble() ?? 0.0,
@@ -238,12 +247,16 @@ class InvoiceModel {
 
   Map<String, dynamic> toJson() {
     return {
+      'id': id,
+      '_id': id,
       'invoiceNumber': invoiceNumber,
       'customerId': customerId,
       'customerSnapshot': customerSnapshot.toJson(),
       'businessSnapshot': businessSnapshot.toJson(),
       'invoiceDate': invoiceDate.toIso8601String(),
       'dueDate': dueDate.toIso8601String(),
+      'origin': origin,
+      'attachments': attachments,
       'items': items.map((i) => i.toJson()).toList(),
       'isInterState': isInterState,
       'subtotal': subtotal,
@@ -267,6 +280,7 @@ class InvoiceModel {
       'notes': notes,
       'termsAndConditions': termsAndConditions,
       'amountInWords': amountInWords,
+      'pdfUrl': pdfUrl,
     };
   }
 
@@ -278,6 +292,8 @@ class InvoiceModel {
     BusinessModel? businessSnapshot,
     DateTime? invoiceDate,
     DateTime? dueDate,
+    String? origin,
+    List<String>? attachments,
     List<InvoiceItemModel>? items,
     bool? isInterState,
     double? subtotal,
@@ -311,6 +327,8 @@ class InvoiceModel {
       businessSnapshot: businessSnapshot ?? this.businessSnapshot,
       invoiceDate: invoiceDate ?? this.invoiceDate,
       dueDate: dueDate ?? this.dueDate,
+      origin: origin ?? this.origin,
+      attachments: attachments ?? this.attachments,
       items: items ?? this.items,
       isInterState: isInterState ?? this.isInterState,
       subtotal: subtotal ?? this.subtotal,

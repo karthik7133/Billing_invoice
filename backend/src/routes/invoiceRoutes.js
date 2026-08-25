@@ -5,6 +5,7 @@ const {
   getInvoices,
   getInvoiceById,
   createInvoice,
+  updateInvoice,
   updateInvoiceStatus,
   markInvoiceAsPaid,
   deleteInvoice,
@@ -15,7 +16,7 @@ router.use(protect);
 
 router.get('/next-number', getNextInvoiceNumber);
 router.route('/').get(getInvoices).post(createInvoice);
-router.route('/:id').get(getInvoiceById).delete(deleteInvoice);
+router.route('/:id').get(getInvoiceById).put(updateInvoice).delete(deleteInvoice);
 router.put('/:id/status', updateInvoiceStatus);
 router.post('/:id/mark-paid', markInvoiceAsPaid);
 

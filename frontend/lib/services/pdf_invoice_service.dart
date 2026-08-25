@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -25,13 +26,22 @@ class PdfInvoiceService {
     final business = invoice.businessSnapshot;
     final customer = invoice.customerSnapshot;
 
-    // Load business logo if available
+    // Load crab_logo.png from assets, with network/memory fallback
     pw.ImageProvider? logoImage;
-    if (business.logo.isNotEmpty && business.logo.startsWith('http')) {
+    try {
+      logoImage = await imageFromAssetBundle('assets/images/crab_logo.png');
+    } catch (_) {
       try {
-        logoImage = await networkImage(business.logo);
+        final byteData = await rootBundle.load('assets/images/crab_logo.png');
+        logoImage = pw.MemoryImage(byteData.buffer.asUint8List());
       } catch (_) {
-        logoImage = null;
+        if (business.logo.isNotEmpty && business.logo.startsWith('http')) {
+          try {
+            logoImage = await networkImage(business.logo);
+          } catch (_) {
+            logoImage = null;
+          }
+        }
       }
     }
 
@@ -74,7 +84,7 @@ class PdfInvoiceService {
           italic: fontItalic,
         ),
         build: (context) => [
-          // ─── 1. HEADER: Company Block (Left 68%) + Logo/Badge (Right 28%) ───
+          // ─── 1. HEADER: Company Block (Left 68%) + Crab Logo (Right 28%) ───
           pw.Row(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -113,23 +123,28 @@ class PdfInvoiceService {
                 ),
               ),
 
-              // Right: Logo / Crab Circle Badge
+              // Right: Crab Logo (Top Right)
               pw.Container(
-                width: 48,
-                height: 48,
+                width: 65,
+                height: 65,
                 alignment: pw.Alignment.center,
-                decoration: pw.BoxDecoration(
-                  shape: pw.BoxShape.circle,
-                  border: pw.Border.all(color: brandPurple, width: 1.5),
-                ),
                 child: logoImage != null
-                    ? pw.ClipOval(child: pw.Image(logoImage, width: 42, height: 42, fit: pw.BoxFit.cover))
-                    : pw.Text(
-                        'crab',
-                        style: pw.TextStyle(
-                          font: fontBold,
-                          fontSize: 9,
-                          color: brandPurple,
+                    ? pw.Image(logoImage, width: 65, height: 65, fit: pw.BoxFit.contain)
+                    : pw.Container(
+                        width: 50,
+                        height: 50,
+                        alignment: pw.Alignment.center,
+                        decoration: pw.BoxDecoration(
+                          shape: pw.BoxShape.circle,
+                          border: pw.Border.all(color: brandPurple, width: 1.5),
+                        ),
+                        child: pw.Text(
+                          'CRAB',
+                          style: pw.TextStyle(
+                            font: fontBold,
+                            fontSize: 10,
+                            color: brandPurple,
+                          ),
                         ),
                       ),
               ),
@@ -137,10 +152,11 @@ class PdfInvoiceService {
           ),
 
           pw.SizedBox(height: 6),
-          pw.Divider(color: lineGray, thickness: 0.6),
-          pw.SizedBox(height: 10),
+          // Bolder line on top of Sales Bill matching sales bill color (brandPurple)
+          pw.Divider(color: brandPurple, thickness: 1.8),
+          pw.SizedBox(height: 3),
 
-          // ─── 2. TITLE: SALES BILL ───
+          // ─── 2. TITLE: SALES BILL (without bottom line) ───
           pw.Center(
             child: pw.Text(
               'SALES BILL',
@@ -152,9 +168,7 @@ class PdfInvoiceService {
               ),
             ),
           ),
-          pw.SizedBox(height: 4),
-          pw.Divider(color: lineGray, thickness: 0.6),
-          pw.SizedBox(height: 12),
+          pw.SizedBox(height: 14),
 
           // ─── 3. BILL TO (Left 55%) / INVOICE DETAILS (Right 40%) ───
           pw.Row(
@@ -210,6 +224,11 @@ class PdfInvoiceService {
                       'Date: $dateString',
                       style: pw.TextStyle(font: fontRegular, fontSize: 10, color: darkText),
                     ),
+                    pw.SizedBox(height: 2),
+                    pw.Text(
+                      'ORIGIN: ${invoice.origin.isNotEmpty ? invoice.origin.toUpperCase() : "AP"}',
+                      style: pw.TextStyle(font: fontRegular, fontSize: 10, color: darkText),
+                    ),
                   ],
                 ),
               ),
@@ -242,7 +261,7 @@ class PdfInvoiceService {
                 ],
               ),
 
-              // Data Rows
+              // Data Rows with BOLDER item names
               ...invoice.items.asMap().entries.map((entry) {
                 final idx = entry.key + 1;
                 final item = entry.value;
@@ -253,7 +272,14 @@ class PdfInvoiceService {
                 return pw.TableRow(
                   children: [
                     _buildTableCell('$idx', align: pw.TextAlign.center, color: darkText),
-                    _buildTableCell(item.name, align: pw.TextAlign.left, color: darkText),
+                    _buildTableCell(
+                      item.name,
+                      align: pw.TextAlign.left,
+                      color: darkText,
+                      isBold: true,
+                      fontBold: fontBold,
+                      fontSize: 10.2,
+                    ),
                     _buildTableCell(qtyStr, align: pw.TextAlign.center, color: darkText),
                     _buildTableCell(unitStr, align: pw.TextAlign.center, color: darkText),
                     _buildTableCell('₹ ${CurrencyFormatter.format(item.rate, showSymbol: false)}', align: pw.TextAlign.right, color: darkText),
@@ -459,6 +485,9 @@ class PdfInvoiceService {
     String text, {
     pw.TextAlign align = pw.TextAlign.left,
     PdfColor? color,
+    bool isBold = false,
+    pw.Font? fontBold,
+    double? fontSize,
   }) {
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 4),
@@ -466,7 +495,9 @@ class PdfInvoiceService {
         text,
         textAlign: align,
         style: pw.TextStyle(
-          fontSize: 9.5,
+          font: isBold ? fontBold : null,
+          fontSize: fontSize ?? 9.5,
+          fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
           color: color ?? PdfColor.fromHex('#1A1A1A'),
         ),
       ),

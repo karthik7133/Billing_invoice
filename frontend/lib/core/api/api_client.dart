@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,8 +9,14 @@ class ApiResponse {
   final bool success;
   final dynamic data;
   final String? message;
+  final int? statusCode;
 
-  ApiResponse({required this.success, this.data, this.message});
+  ApiResponse({
+    required this.success,
+    this.data,
+    this.message,
+    this.statusCode,
+  });
 }
 
 class ApiClient {
@@ -49,112 +57,162 @@ class ApiClient {
     return headers;
   }
 
-  Future<ApiResponse> get(String url) async {
-    debugPrint('[API GET] Request -> $url');
-    try {
-      final response = await http
-          .get(Uri.parse(url), headers: _getHeaders())
-          .timeout(const Duration(seconds: 30));
+  /// Executes an HTTP action with smart retry logic for Render free-tier cold starts
+  Future<ApiResponse> _executeWithRetry(
+    String method,
+    String url,
+    Future<http.Response> Function() action, {
+    int maxRetries = 2,
+  }) async {
+    int attempt = 0;
+    while (attempt <= maxRetries) {
+      attempt++;
+      try {
+        debugPrint('[API $method] Attempt $attempt/$maxRetries -> $url');
+        final response = await action();
+        debugPrint('[API $method] Response (${response.statusCode}) <- $url');
 
-      debugPrint('[API GET] Response (${response.statusCode}) <- $url');
-      debugPrint('[API GET] Body: ${response.body}');
+        // Check if server is returning 502/503/504 Bad Gateway (Render container starting up)
+        if ((response.statusCode == 502 || response.statusCode == 503 || response.statusCode == 504) && attempt <= maxRetries) {
+          debugPrint('[API $method] Render server is starting up (${response.statusCode}). Retrying in 2.5s...');
+          await Future.delayed(const Duration(milliseconds: 2500));
+          continue;
+        }
 
-      final body = json.decode(response.body);
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        return ApiResponse(success: true, data: body);
-      } else {
+        final body = json.decode(response.body);
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          return ApiResponse(success: true, data: body, statusCode: response.statusCode);
+        } else {
+          return ApiResponse(
+            success: false,
+            message: body['message'] ?? 'Request failed with status ${response.statusCode}',
+            statusCode: response.statusCode,
+          );
+        }
+      } on SocketException catch (e) {
+        debugPrint('[API $method] SocketException on attempt $attempt: $e');
+        if (attempt <= maxRetries) {
+          await Future.delayed(const Duration(milliseconds: 2500));
+          continue;
+        }
         return ApiResponse(
           success: false,
-          message: body['message'] ?? 'Request failed with status ${response.statusCode}',
+          message: 'Connection failed. Server may still be waking up. Please try again in a moment.',
         );
+      } on TimeoutException catch (e) {
+        debugPrint('[API $method] Timeout on attempt $attempt: $e');
+        if (attempt <= maxRetries) {
+          await Future.delayed(const Duration(milliseconds: 2000));
+          continue;
+        }
+        return ApiResponse(
+          success: false,
+          message: 'Request timed out while waiting for server to wake up.',
+        );
+      } catch (e) {
+        debugPrint('[API $method] Error: $e');
+        if (attempt <= maxRetries && e.toString().contains('Failed host lookup')) {
+          await Future.delayed(const Duration(milliseconds: 2000));
+          continue;
+        }
+        return ApiResponse(success: false, message: e.toString());
       }
-    } catch (e) {
-      debugPrint('[API GET] Error: $e');
-      return ApiResponse(success: false, message: e.toString());
     }
+
+    return ApiResponse(
+      success: false,
+      message: 'Server is currently waking up. Please retry.',
+    );
+  }
+
+  Future<ApiResponse> get(String url) async {
+    return _executeWithRetry('GET', url, () {
+      return http
+          .get(Uri.parse(url), headers: _getHeaders())
+          .timeout(const Duration(seconds: 40));
+    });
   }
 
   Future<ApiResponse> post(String url, dynamic body) async {
-    debugPrint('[API POST] Request -> $url');
-    debugPrint('[API POST] Body: ${json.encode(body)}');
-    try {
-      final response = await http
+    return _executeWithRetry('POST', url, () {
+      return http
           .post(
             Uri.parse(url),
             headers: _getHeaders(),
             body: json.encode(body),
           )
           .timeout(const Duration(seconds: 45));
-
-      debugPrint('[API POST] Response (${response.statusCode}) <- $url');
-      debugPrint('[API POST] Body: ${response.body}');
-
-      final resBody = json.decode(response.body);
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        return ApiResponse(success: true, data: resBody);
-      } else {
-        return ApiResponse(
-          success: false,
-          message: resBody['message'] ?? 'Request failed with status ${response.statusCode}',
-        );
-      }
-    } catch (e) {
-      debugPrint('[API POST] Error: $e');
-      return ApiResponse(success: false, message: e.toString());
-    }
+    });
   }
 
   Future<ApiResponse> put(String url, dynamic body) async {
-    debugPrint('[API PUT] Request -> $url');
-    debugPrint('[API PUT] Body: ${json.encode(body)}');
-    try {
-      final response = await http
+    return _executeWithRetry('PUT', url, () {
+      return http
           .put(
             Uri.parse(url),
             headers: _getHeaders(),
             body: json.encode(body),
           )
           .timeout(const Duration(seconds: 45));
+    });
+  }
 
-      debugPrint('[API PUT] Response (${response.statusCode}) <- $url');
-      debugPrint('[API PUT] Body: ${response.body}');
+  Future<ApiResponse> delete(String url) async {
+    return _executeWithRetry('DELETE', url, () {
+      return http
+          .delete(Uri.parse(url), headers: _getHeaders())
+          .timeout(const Duration(seconds: 30));
+    });
+  }
 
-      final resBody = json.decode(response.body);
+  /// Upload file to Cloudinary / Backend upload route
+  Future<ApiResponse> uploadFile(String url, String filePath, {String fieldName = 'file'}) async {
+    try {
+      final request = http.MultipartRequest('POST', Uri.parse(url));
+      if (_token != null && _token!.isNotEmpty) {
+        request.headers['Authorization'] = 'Bearer $_token';
+      }
+      request.files.add(await http.MultipartFile.fromPath(fieldName, filePath));
+      final streamedResponse = await request.send().timeout(const Duration(seconds: 60));
+      final response = await http.Response.fromStream(streamedResponse);
+      final body = json.decode(response.body);
       if (response.statusCode >= 200 && response.statusCode < 300) {
-        return ApiResponse(success: true, data: resBody);
+        return ApiResponse(success: true, data: body, statusCode: response.statusCode);
       } else {
         return ApiResponse(
           success: false,
-          message: resBody['message'] ?? 'Request failed with status ${response.statusCode}',
+          message: body['message'] ?? 'File upload failed (${response.statusCode})',
+          statusCode: response.statusCode,
         );
       }
     } catch (e) {
-      debugPrint('[API PUT] Error: $e');
+      debugPrint('[API UPLOAD] Error: $e');
       return ApiResponse(success: false, message: e.toString());
     }
   }
 
-  Future<ApiResponse> delete(String url) async {
-    debugPrint('[API DELETE] Request -> $url');
+  /// Upload raw bytes or web file to Cloudinary
+  Future<ApiResponse> uploadBytes(String url, List<int> bytes, String filename, {String fieldName = 'file'}) async {
     try {
-      final response = await http
-          .delete(Uri.parse(url), headers: _getHeaders())
-          .timeout(const Duration(seconds: 30));
-
-      debugPrint('[API DELETE] Response (${response.statusCode}) <- $url');
-      debugPrint('[API DELETE] Body: ${response.body}');
-
-      final resBody = json.decode(response.body);
+      final request = http.MultipartRequest('POST', Uri.parse(url));
+      if (_token != null && _token!.isNotEmpty) {
+        request.headers['Authorization'] = 'Bearer $_token';
+      }
+      request.files.add(http.MultipartFile.fromBytes(fieldName, bytes, filename: filename));
+      final streamedResponse = await request.send().timeout(const Duration(seconds: 60));
+      final response = await http.Response.fromStream(streamedResponse);
+      final body = json.decode(response.body);
       if (response.statusCode >= 200 && response.statusCode < 300) {
-        return ApiResponse(success: true, data: resBody);
+        return ApiResponse(success: true, data: body, statusCode: response.statusCode);
       } else {
         return ApiResponse(
           success: false,
-          message: resBody['message'] ?? 'Request failed with status ${response.statusCode}',
+          message: body['message'] ?? 'File upload failed (${response.statusCode})',
+          statusCode: response.statusCode,
         );
       }
     } catch (e) {
-      debugPrint('[API DELETE] Error: $e');
+      debugPrint('[API UPLOAD] Error: $e');
       return ApiResponse(success: false, message: e.toString());
     }
   }

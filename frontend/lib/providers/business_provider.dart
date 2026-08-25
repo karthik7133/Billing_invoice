@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import '../models/business_model.dart';
 import '../core/api/api_client.dart';
 import '../core/api/endpoints.dart';
+import '../services/local_cache_service.dart';
 
 class BusinessProvider with ChangeNotifier {
   final ApiClient _api = ApiClient();
+  final LocalCacheService _cache = LocalCacheService();
 
   BusinessModel _business = BusinessModel(
     id: '',
@@ -34,12 +36,28 @@ class BusinessProvider with ChangeNotifier {
 
   bool _isLoading = false;
   String? _errorMessage;
+  bool _isInitialized = false;
+
+  BusinessProvider() {
+    _initFromCache();
+  }
+
+  Future<void> _initFromCache() async {
+    if (_isInitialized) return;
+    final cached = await _cache.loadBusiness();
+    if (cached != null) {
+      _business = cached;
+      notifyListeners();
+    }
+    _isInitialized = true;
+  }
 
   BusinessModel get business => _business;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
   Future<void> fetchBusinessProfile() async {
+    await _initFromCache();
     _isLoading = true;
     notifyListeners();
 
@@ -48,6 +66,7 @@ class BusinessProvider with ChangeNotifier {
 
     if (res.success && res.data != null && res.data['business'] != null) {
       _business = BusinessModel.fromJson(res.data['business']);
+      await _cache.saveBusiness(_business);
     }
     notifyListeners();
   }
@@ -62,14 +81,12 @@ class BusinessProvider with ChangeNotifier {
 
     if (res.success && res.data != null && res.data['business'] != null) {
       _business = BusinessModel.fromJson(res.data['business']);
-      notifyListeners();
-      return true;
     } else {
-      // Local optimistic update when offline
       _business = updated;
-      notifyListeners();
-      return true;
     }
+    await _cache.saveBusiness(_business);
+    notifyListeners();
+    return true;
   }
 
   void updateLogo(String logoUrl) {

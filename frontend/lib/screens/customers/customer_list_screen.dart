@@ -5,6 +5,7 @@ import '../../models/customer_model.dart';
 import '../../providers/customer_provider.dart';
 import '../../widgets/customer_card.dart';
 import '../../widgets/empty_state_widget.dart';
+import '../../widgets/cloud_server_status_pill.dart';
 import 'add_edit_customer_screen.dart';
 import 'party_details_screen.dart';
 
@@ -45,11 +46,18 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
     }
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text('Customer Directory'),
+        backgroundColor: Colors.white,
+        elevation: 0.5,
+        title: const Text(
+          'Customer Directory',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
+        ),
         actions: [
+          const CloudServerStatusPill(compact: true),
           IconButton(
-            icon: const Icon(Icons.person_add_alt_1_outlined, color: AppColors.primary),
+            icon: const Icon(Icons.person_add_alt_1_outlined, color: Color(0xFF2563EB)),
             onPressed: () async {
               final created = await Navigator.of(context).push<CustomerModel>(
                 MaterialPageRoute(builder: (ctx) => const AddEditCustomerScreen()),
@@ -60,6 +68,7 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
             },
             tooltip: 'Add Customer',
           ),
+          const SizedBox(width: 6),
         ],
       ),
       body: RefreshIndicator(
@@ -68,13 +77,13 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
           children: [
             // 1. Search Bar
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               child: Container(
-                height: 46,
+                height: 44,
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE2E8F0), width: 1.0),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.02),
@@ -88,7 +97,7 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
                   children: [
                     const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 12),
-                      child: Icon(Icons.search_rounded, color: Color(0xFF2563EB), size: 20),
+                      child: Icon(Icons.search_rounded, color: Color(0xFF2563EB), size: 19),
                     ),
                     Expanded(
                       child: TextField(
@@ -96,7 +105,7 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
                         onChanged: (val) {
                           customerProvider.setSearchQuery(val);
                         },
-                        style: const TextStyle(fontSize: 14, color: Color(0xFF1E293B), fontWeight: FontWeight.w500),
+                        style: const TextStyle(fontSize: 13.5, color: Color(0xFF1E293B), fontWeight: FontWeight.w500),
                         decoration: const InputDecoration(
                           hintText: 'Search by name, phone, or GSTIN...',
                           hintStyle: TextStyle(fontSize: 13, color: Color(0xFF94A3B8), fontWeight: FontWeight.normal),
@@ -125,10 +134,10 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
               ),
             ),
 
-            // 2. Filter Chips — horizontally scrollable so they never overflow
+            // 2. Filter Chips
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
               child: Row(
                 children: [
                   _buildFilterChip('ALL', 'All Customers'),
@@ -159,7 +168,7 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
                       },
                     )
                   : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                       itemCount: customers.length,
                       itemBuilder: (ctx, i) {
                         final customer = customers[i];
@@ -206,12 +215,16 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
     return ChoiceChip(
       label: Text(label),
       selected: isSelected,
-      selectedColor: AppColors.primary.withValues(alpha: 0.12),
-      backgroundColor: AppColors.surface,
+      selectedColor: const Color(0xFFEFF6FF),
+      backgroundColor: Colors.white,
+      side: BorderSide(
+        color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0),
+        width: 1,
+      ),
       labelStyle: TextStyle(
         fontSize: 12,
         fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-        color: isSelected ? AppColors.primary : AppColors.textSecondary,
+        color: isSelected ? const Color(0xFF2563EB) : const Color(0xFF64748B),
       ),
       onSelected: (val) {
         setState(() {
@@ -225,20 +238,24 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Customer?'),
-        content: Text('Are you sure you want to delete ${customer.name}? This will not affect previously created invoices.'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Delete Customer?', style: TextStyle(fontWeight: FontWeight.w800)),
+        content: Text('Are you sure you want to delete "${customer.name}"? This will not affect previously created invoices.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B))),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.payableRed),
             onPressed: () {
               Provider.of<CustomerProvider>(context, listen: false).deleteCustomer(customer.id);
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Customer ${customer.name} deleted')),
+                SnackBar(
+                  content: Text('Customer "${customer.name}" deleted'),
+                  behavior: SnackBarBehavior.floating,
+                ),
               );
             },
             child: const Text('Delete'),

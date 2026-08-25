@@ -18,12 +18,100 @@ class InvoiceDetailScreen extends StatefulWidget {
 }
 
 class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
+  /// Live copy of the invoice — always kept in sync with the provider.
+  /// Falls back to widget.invoice if the provider doesn't have it yet.
   late InvoiceModel _invoice;
+  late String _invoiceId;
 
   @override
   void initState() {
     super.initState();
     _invoice = widget.invoice;
+    _invoiceId = widget.invoice.id;
+  }
+
+  /// Always return the freshest copy: provider list first, local state as fallback.
+  InvoiceModel _liveinvoice(InvoiceProvider provider) {
+    try {
+      // Match by id OR by invoiceNumber (handles UUID→MongoDB id transitions)
+      return provider.allInvoices.firstWhere(
+        (inv) => inv.id == _invoiceId || inv.invoiceNumber == _invoice.invoiceNumber,
+      );
+    } catch (_) {
+      return _invoice;
+    }
+  }
+
+  void _editInvoiceNumberDialog() {
+    final provider = Provider.of<InvoiceProvider>(context, listen: false);
+    _invoice = _liveinvoice(provider);
+    _invoiceId = _invoice.id;
+    final controller = TextEditingController(text: _invoice.invoiceNumber);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Change Invoice Number', style: TextStyle(fontWeight: FontWeight.w800)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Enter new invoice number:', style: TextStyle(fontSize: 13, color: Color(0xFF64748B))),
+            const SizedBox(height: 10),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+              decoration: InputDecoration(
+                labelText: 'Invoice Number',
+                filled: true,
+                fillColor: const Color(0xFFF8FAFC),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B))),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final newNum = controller.text.trim();
+              if (newNum.isNotEmpty) {
+                // Optimistically update local state immediately
+                setState(() {
+                  _invoice = _invoice.copyWith(invoiceNumber: newNum);
+                });
+                Navigator.pop(ctx);
+                final invoiceProvider = Provider.of<InvoiceProvider>(context, listen: false);
+                // Use _invoiceId (might be updated to MongoDB id already)
+                final success = await invoiceProvider.updateInvoiceNumber(_invoiceId, newNum);
+                // Sync local id with whatever the provider resolved to
+                if (mounted) {
+                  final live = _liveinvoice(invoiceProvider);
+                  if (live.id != _invoiceId) {
+                    setState(() { _invoiceId = live.id; });
+                  }
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(success
+                          ? 'Invoice number updated to $newNum'
+                          : 'Saved locally — will sync when online'),
+                      behavior: SnackBarBehavior.floating,
+                      backgroundColor: success ? AppColors.success : AppColors.warning,
+                    ),
+                  );
+                }
+              }
+            },
+            child: const Text('Save Changes'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _recordPaymentDialog() {
@@ -32,7 +120,8 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Record Payment'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Record Payment', style: TextStyle(fontWeight: FontWeight.w800)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -88,11 +177,24 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Always sync with the live provider data
+    final invoiceProvider = Provider.of<InvoiceProvider>(context);
+    _invoice = _liveinvoice(invoiceProvider);
     final customer = _invoice.customerSnapshot;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_invoice.invoiceNumber),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(_invoice.invoiceNumber, style: const TextStyle(fontWeight: FontWeight.w800)),
+            IconButton(
+              icon: const Icon(Icons.edit_outlined, size: 18, color: Color(0xFF2563EB)),
+              tooltip: 'Edit Invoice Number',
+              onPressed: _editInvoiceNumberDialog,
+            ),
+          ],
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.share_outlined, color: AppColors.primary),
@@ -106,7 +208,9 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
           ),
           PopupMenuButton<String>(
             onSelected: (val) {
-              if (val == 'delete') {
+              if (val == 'edit_num') {
+                _editInvoiceNumberDialog();
+              } else if (val == 'delete') {
                 Provider.of<InvoiceProvider>(context, listen: false).deleteInvoice(_invoice.id);
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -115,6 +219,16 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
               }
             },
             itemBuilder: (c) => [
+              const PopupMenuItem(
+                value: 'edit_num',
+                child: Row(
+                  children: [
+                    Icon(Icons.edit_outlined, color: Color(0xFF2563EB), size: 18),
+                    SizedBox(width: 8),
+                    Text('Change Invoice Number'),
+                  ],
+                ),
+              ),
               const PopupMenuItem(
                 value: 'delete',
                 child: Row(
@@ -160,6 +274,11 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                       Text(
                         'Date: ${CurrencyFormatter.formatDate(_invoice.invoiceDate)}',
                         style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Origin: ${_invoice.origin.toUpperCase()}',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF2563EB)),
                       ),
                     ],
                   ),
@@ -401,6 +520,99 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                 ],
               ),
             ),
+
+            // 4b. Attached Cloudinary Photos / Receipts Gallery
+            if (_invoice.attachments.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.photo_library_outlined, size: 18, color: Color(0xFF2563EB)),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Attached Photos & Receipts (${_invoice.attachments.length})',
+                          style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 86,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _invoice.attachments.length,
+                        separatorBuilder: (ctx, i) => const SizedBox(width: 10),
+                        itemBuilder: (ctx, i) {
+                          final url = _invoice.attachments[i];
+                          return GestureDetector(
+                            onTap: () {
+                              showDialog(
+                                context: context,
+                                builder: (c) => Dialog(
+                                  backgroundColor: Colors.transparent,
+                                  child: Stack(
+                                    alignment: Alignment.topRight,
+                                    children: [
+                                      InteractiveViewer(
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(12),
+                                          child: Image.network(url, fit: BoxFit.contain),
+                                        ),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.close, color: Colors.white, size: 28),
+                                        onPressed: () => Navigator.pop(c),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                width: 86,
+                                height: 86,
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Image.network(
+                                  url,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (ctx, e, st) => const Center(
+                                    child: Icon(Icons.broken_image_outlined, color: Colors.grey),
+                                  ),
+                                  loadingBuilder: (ctx, child, progress) {
+                                    if (progress == null) return child;
+                                    return const Center(
+                                      child: SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
 
             const SizedBox(height: 20),
 

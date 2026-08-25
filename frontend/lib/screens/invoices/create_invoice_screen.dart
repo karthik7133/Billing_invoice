@@ -81,6 +81,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
   late TextEditingController _receivedAmountController;
 
   late DateTime _invoiceDate;
+  String _selectedOrigin = 'AP';
   String _paymentType = 'Cash';
   bool _isReceivedChecked = false;
   bool _termsExpanded = false;
@@ -94,6 +95,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
   void initState() {
     super.initState();
     _invoiceDate = widget.existingInvoice?.invoiceDate ?? DateTime.now();
+    _selectedOrigin = (widget.existingInvoice?.origin.isNotEmpty == true) ? widget.existingInvoice!.origin : 'AP';
 
     final businessProvider = Provider.of<BusinessProvider>(context, listen: false);
     final business = businessProvider.business;
@@ -354,12 +356,39 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     final receivedInput = double.tryParse(_receivedAmountController.text.trim()) ?? 0.0;
     final amountPaid = _isReceivedChecked ? receivedInput : 0.0;
 
+    // Upload attached images to Cloudinary
+    final uploadedUrls = <String>[];
+    if (_attachedImages.isNotEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                SizedBox(width: 12),
+                Text('Uploading attached photos to Cloudinary...'),
+              ],
+            ),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+      for (final img in _attachedImages) {
+        final url = await invProvider.uploadAttachment(img);
+        if (url != null && url.isNotEmpty) {
+          uploadedUrls.add(url);
+        }
+      }
+    }
+
     final invoice = await invProvider.createInvoice(
       customer: customer,
       business: busProvider.business,
       rawItems: rawItems,
       invoiceNumber: _invoiceNoController.text.trim(),
       invoiceDate: _invoiceDate,
+      origin: _selectedOrigin,
+      attachments: uploadedUrls,
       amountPaid: amountPaid,
       paymentType: _paymentType,
       description: _descriptionController.text.trim(),
@@ -434,42 +463,46 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. Invoice No & Date Row
+            // 1. Invoice No, Date & Origin Row
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: const Color(0xFFE2E8F0)),
               ),
               child: Row(
                 children: [
-                  // Invoice No
+                  // Invoice No (Editable at any time)
                   Expanded(
-                    child: Row(
+                    flex: 4,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'Invoice No.\nNo ',
-                          style: TextStyle(fontSize: 12, color: Color(0xFF64748B), height: 1.2),
+                          'Invoice No.',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
                         ),
-                        Expanded(
-                          child: TextField(
-                            controller: _invoiceNoController,
-                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
-                            decoration: const InputDecoration(
-                              isDense: true,
-                              border: InputBorder.none,
-                              contentPadding: EdgeInsets.zero,
-                            ),
+                        const SizedBox(height: 2),
+                        TextField(
+                          controller: _invoiceNoController,
+                          style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            border: InputBorder.none,
+                            contentPadding: EdgeInsets.zero,
+                            hintText: 'e.g. 101',
                           ),
                         ),
                       ],
                     ),
                   ),
-                  Container(height: 28, width: 1, color: const Color(0xFFCBD5E1)),
-                  const SizedBox(width: 12),
+                  Container(height: 30, width: 1, color: const Color(0xFFE2E8F0)),
+                  const SizedBox(width: 8),
+
                   // Date
                   Expanded(
+                    flex: 4,
                     child: GestureDetector(
                       onTap: () async {
                         final picked = await showDatePicker(
@@ -482,23 +515,54 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                           setState(() => _invoiceDate = picked);
                         }
                       },
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          const Text('Date', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
+                          const SizedBox(height: 2),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text('Date', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
-                              const SizedBox(height: 2),
                               Text(
-                                DateFormat('dd/MM/yyyy').format(_invoiceDate),
-                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
+                                DateFormat('dd/MM/yy').format(_invoiceDate),
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
                               ),
+                              const Icon(Icons.calendar_today_outlined, color: Color(0xFF2563EB), size: 14),
                             ],
                           ),
-                          const Icon(Icons.calendar_today_outlined, color: Color(0xFF2563EB), size: 16),
                         ],
                       ),
+                    ),
+                  ),
+                  Container(height: 30, width: 1, color: const Color(0xFFE2E8F0)),
+                  const SizedBox(width: 8),
+
+                  // Origin (State)
+                  Expanded(
+                    flex: 4,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Origin', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
+                        const SizedBox(height: 2),
+                        DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: _selectedOrigin,
+                            isDense: true,
+                            icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF2563EB), size: 18),
+                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
+                            items: const [
+                              DropdownMenuItem(value: 'AP', child: Text('AP (Andhra)')),
+                              DropdownMenuItem(value: 'ORRISA', child: Text('ORRISA')),
+                              DropdownMenuItem(value: 'GUJARAT', child: Text('GUJARAT')),
+                              DropdownMenuItem(value: 'KARNATAKA', child: Text('KARNATAKA')),
+                            ],
+                            onChanged: (val) {
+                              if (val != null) setState(() => _selectedOrigin = val);
+                            },
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],

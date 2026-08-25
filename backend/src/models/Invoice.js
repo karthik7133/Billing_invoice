@@ -210,6 +210,15 @@ const InvoiceSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    origin: {
+      type: String,
+      default: 'AP',
+    },
+    attachments: [
+      {
+        type: String,
+      },
+    ],
     excessAmount: {
       type: Number,
       default: 0,

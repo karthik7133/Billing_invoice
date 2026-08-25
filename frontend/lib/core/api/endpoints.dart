@@ -2,6 +2,9 @@ class Endpoints {
   // Production backend on Render
   static const String baseUrl = 'https://billing-invoice-rpt0.onrender.com/api';
 
+  // Health
+  static const String health = '$baseUrl/health';
+
   // Auth
   static const String register = '$baseUrl/auth/register';
   static const String login = '$baseUrl/auth/login';

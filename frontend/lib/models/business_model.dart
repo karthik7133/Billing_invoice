@@ -120,6 +120,8 @@ class BusinessModel {
 
   Map<String, dynamic> toJson() {
     return {
+      'id': id,
+      '_id': id,
       'businessName': businessName,
       'logo': logo,
       'phone': phone,
