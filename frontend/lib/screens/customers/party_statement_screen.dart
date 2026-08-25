@@ -162,25 +162,12 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
     return rows;
   }
 
-  // ─── PDF Options Sheet ─────────────────────────────────────────────────────
+  // ─── PDF Click → directly to "What to display on PDF?" ───────────────────
 
   void _showPdfOptionsSheet(List<InvoiceModel> invoices) {
     HapticFeedback.lightImpact();
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => _PdfOptionsSheet(
-        customer: widget.customer,
-        invoices: invoices,
-        fromDate: _fromDate,
-        toDate: _toDate,
-        onSharePdf: () {
-          Navigator.pop(ctx);
-          _showPdfDisplayOptionsSheet(invoices);
-        },
-      ),
-    );
+    // Skip intermediate PDF Options sheet — go straight to display options
+    _showPdfDisplayOptionsSheet(invoices);
   }
 
   void _showPdfDisplayOptionsSheet(List<InvoiceModel> invoices) {
@@ -647,132 +634,6 @@ class _StatementRow {
   });
 }
 
-// ─── PDF Options Sheet ────────────────────────────────────────────────────────
-
-class _PdfOptionsSheet extends StatelessWidget {
-  final CustomerModel customer;
-  final List<InvoiceModel> invoices;
-  final DateTime fromDate;
-  final DateTime toDate;
-  final VoidCallback onSharePdf;
-
-  const _PdfOptionsSheet({
-    required this.customer,
-    required this.invoices,
-    required this.fromDate,
-    required this.toDate,
-    required this.onSharePdf,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Handle
-            Container(
-              width: 40, height: 4,
-              margin: const EdgeInsets.only(top: 12, bottom: 8),
-              decoration: BoxDecoration(color: const Color(0xFFE2E8F0), borderRadius: BorderRadius.circular(2)),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'PDF Options',
-                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close, color: Color(0xFF64748B)),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-            _PdfOption(
-              icon: Icons.open_in_new_rounded,
-              label: 'Open PDF',
-              onTap: () async {
-                Navigator.pop(context);
-                try {
-                  final bytes = await PdfInvoiceService.generatePartyStatementPdf(
-                    customer: customer,
-                    invoices: invoices,
-                    fromDate: fromDate,
-                    toDate: toDate,
-                  );
-                  await ShareService.sharePdf(bytes, filename: 'statement.pdf');
-                } catch (_) {}
-              },
-            ),
-            _PdfOption(
-              icon: Icons.print_outlined,
-              label: 'Print PDF',
-              onTap: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Print feature coming soon'), behavior: SnackBarBehavior.floating),
-                );
-              },
-            ),
-            _PdfOption(
-              icon: Icons.share_outlined,
-              label: 'Share PDF',
-              onTap: onSharePdf,
-            ),
-            _PdfOption(
-              icon: Icons.download_outlined,
-              label: 'Save PDF to Phone',
-              onTap: () async {
-                Navigator.pop(context);
-                try {
-                  final bytes = await PdfInvoiceService.generatePartyStatementPdf(
-                    customer: customer,
-                    invoices: invoices,
-                    fromDate: fromDate,
-                    toDate: toDate,
-                  );
-                  await ShareService.sharePdf(bytes, filename: '${customer.name}_statement.pdf');
-                } catch (_) {}
-              },
-            ),
-            const SizedBox(height: 16),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PdfOption extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  const _PdfOption({required this.icon, required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      leading: Icon(icon, color: const Color(0xFF374151), size: 22),
-      title: Text(label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
-      onTap: onTap,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 2),
-    );
-  }
-}
 
 // ─── PDF Display Options Sheet ────────────────────────────────────────────────
 

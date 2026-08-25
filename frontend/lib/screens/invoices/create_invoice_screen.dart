@@ -337,158 +337,332 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
   void _showInvoiceNumberSheet() {
     HapticFeedback.lightImpact();
 
-    final prefixOptions = ['NO', 'N', 'AP', 'ORS', 'ORS/LT', 'INV', 'BILL', 'GEN'];
+    final List<String> prefixOptions = ['NO', 'N', 'AP', 'ORS', 'ORS/LT', 'INV', 'BILL', 'GEN'];
     String tempPrefix = _invoicePrefix;
     final tempNumberCtrl = TextEditingController(text: _invoiceNoController.text);
+    final customPrefixCtrl = TextEditingController();
+    bool showingCustomInput = false;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheet) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-          child: Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-            ),
-            child: SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Handle
-                    Center(
-                      child: Container(
-                        width: 40, height: 4,
-                        margin: const EdgeInsets.only(bottom: 16),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE2E8F0),
-                          borderRadius: BorderRadius.circular(2),
+        builder: (ctx, setSheet) {
+          // Live preview of how number will look
+          final previewNum = tempNumberCtrl.text.trim();
+          final preview = (tempPrefix == 'NO' || tempPrefix.isEmpty)
+              ? (previewNum.isEmpty ? '–' : previewNum)
+              : (previewNum.isEmpty ? tempPrefix : '$tempPrefix-$previewNum');
+
+          return Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+            child: Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Handle
+                      Center(
+                        child: Container(
+                          width: 40, height: 4,
+                          margin: const EdgeInsets.only(bottom: 16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE2E8F0),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
                         ),
                       ),
-                    ),
-                    // Header
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Change Invoice No.',
-                          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
-                        ),
-                        IconButton(
-                          onPressed: () => Navigator.pop(ctx),
-                          icon: const Icon(Icons.close, color: Color(0xFF64748B)),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    // Invoice Prefix label
-                    const Text(
-                      'Invoice Prefix',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
-                    ),
-                    const SizedBox(height: 10),
-                    // Scrollable prefix chips row
-                    SizedBox(
-                      height: 40,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: prefixOptions.length,
-                        separatorBuilder: (context, index) => const SizedBox(width: 8),
-                        itemBuilder: (ctx, i) {
-                          final opt = prefixOptions[i];
-                          final isSelected = tempPrefix == opt;
-                          return GestureDetector(
-                            onTap: () => setSheet(() => tempPrefix = opt),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 150),
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      // Header row
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Invoice Number',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
+                          ),
+                          GestureDetector(
+                            onTap: () => Navigator.pop(ctx),
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
                               decoration: BoxDecoration(
-                                color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFF1F5F9),
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(
-                                  color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0),
-                                  width: 1.5,
+                                color: const Color(0xFFF1F5F9),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.close, size: 18, color: Color(0xFF64748B)),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Live Preview Card
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEFF6FF),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFBFDBFE), width: 1),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.receipt_outlined, color: Color(0xFF2563EB), size: 18),
+                            const SizedBox(width: 10),
+                            const Text(
+                              'Preview: ',
+                              style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                            ),
+                            Text(
+                              preview,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                                color: Color(0xFF1E3A8A),
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+
+                      // Prefix section
+                      const Text(
+                        'Invoice Prefix',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF374151)),
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Prefix chips — wrap style
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          ...prefixOptions.map((opt) {
+                            final isSelected = tempPrefix == opt;
+                            return GestureDetector(
+                              onTap: () => setSheet(() {
+                                tempPrefix = opt;
+                                showingCustomInput = false;
+                              }),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 150),
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFF8FAFC),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFD1D5DB),
+                                    width: isSelected ? 0 : 1,
+                                  ),
+                                  boxShadow: isSelected ? [
+                                    BoxShadow(
+                                      color: const Color(0xFF2563EB).withValues(alpha: 0.25),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    )
+                                  ] : null,
+                                ),
+                                child: Text(
+                                  opt == 'NO' ? 'None' : opt,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: isSelected ? Colors.white : const Color(0xFF374151),
+                                  ),
                                 ),
                               ),
-                              child: Text(
-                                opt,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                  color: isSelected ? Colors.white : const Color(0xFF374151),
+                            );
+                          }),
+                          // "+ Custom" chip
+                          GestureDetector(
+                            onTap: () => setSheet(() => showingCustomInput = !showingCustomInput),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: showingCustomInput ? const Color(0xFFFFF7ED) : const Color(0xFFF8FAFC),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: showingCustomInput ? const Color(0xFFEA580C) : const Color(0xFFD1D5DB),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.add, size: 14,
+                                    color: showingCustomInput ? const Color(0xFFEA580C) : const Color(0xFF6B7280),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Custom',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                      color: showingCustomInput ? const Color(0xFFEA580C) : const Color(0xFF6B7280),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      // Custom prefix input (shows inline when + Custom tapped)
+                      if (showingCustomInput) ...[
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: customPrefixCtrl,
+                                autofocus: true,
+                                textCapitalization: TextCapitalization.characters,
+                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                                decoration: InputDecoration(
+                                  hintText: 'e.g. MY, JMJ, TN...',
+                                  hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF9CA3AF)),
+                                  filled: true,
+                                  fillColor: const Color(0xFFF8FAFC),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: const BorderSide(color: Color(0xFFEA580C), width: 1.5),
+                                  ),
                                 ),
                               ),
                             ),
-                          );
-                        },
+                            const SizedBox(width: 8),
+                            ElevatedButton(
+                              onPressed: () {
+                                final custom = customPrefixCtrl.text.trim().toUpperCase();
+                                if (custom.isNotEmpty) {
+                                  setSheet(() {
+                                    if (!prefixOptions.contains(custom)) {
+                                      prefixOptions.add(custom);
+                                    }
+                                    tempPrefix = custom;
+                                    showingCustomInput = false;
+                                    customPrefixCtrl.clear();
+                                  });
+                                }
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFFEA580C),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                elevation: 0,
+                              ),
+                              child: const Text('Add', style: TextStyle(fontWeight: FontWeight.w700)),
+                            ),
+                          ],
+                        ),
+                      ],
+
+                      const SizedBox(height: 20),
+
+                      // Invoice Number field — clean flat style
+                      const Text(
+                        'Invoice Number',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF374151)),
                       ),
-                    ),
-                    const SizedBox(height: 20),
-                    // Invoice No. input
-                    Container(
-                      decoration: BoxDecoration(
-                        border: Border.all(color: const Color(0xFF2563EB), width: 1.5),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: TextField(
+                      const SizedBox(height: 8),
+                      TextField(
                         controller: tempNumberCtrl,
-                        autofocus: true,
                         keyboardType: TextInputType.text,
+                        onChanged: (_) => setSheet(() {}), // trigger live preview
                         style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
                           color: Color(0xFF1E293B),
+                          letterSpacing: 0.5,
                         ),
-                        decoration: const InputDecoration(
-                          labelText: 'Invoice No.',
-                          labelStyle: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                          border: InputBorder.none,
+                        decoration: InputDecoration(
+                          hintText: '101',
+                          hintStyle: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w300,
+                            color: Color(0xFFCBD5E1),
+                          ),
+                          filled: true,
+                          fillColor: const Color(0xFFF8FAFC),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(color: Color(0xFF2563EB), width: 2),
+                          ),
+                          suffixIcon: tempNumberCtrl.text.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear, size: 18, color: Color(0xFF94A3B8)),
+                                  onPressed: () => setSheet(() => tempNumberCtrl.clear()),
+                                )
+                              : null,
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 20),
-                    // SAVE button
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          setState(() {
-                            _invoicePrefix = tempPrefix;
-                            _invoiceNoController.text = tempNumberCtrl.text.trim();
-                          });
-                          Navigator.pop(ctx);
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF2563EB),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 15),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          elevation: 0,
-                        ),
-                        child: const Text(
-                          'SAVE',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: 0.5),
+
+                      const SizedBox(height: 20),
+
+                      // Save Button
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            setState(() {
+                              _invoicePrefix = tempPrefix;
+                              _invoiceNoController.text = tempNumberCtrl.text.trim();
+                            });
+                            Navigator.pop(ctx);
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF2563EB),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 15),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            elevation: 0,
+                          ),
+                          child: const Text(
+                            'Save Invoice Number',
+                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
+
 
   void _saveSale() async {
     final name = _customerNameController.text.trim();

@@ -440,10 +440,17 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  // Add Sale → opens picker popup
+                  // Add Sale → directly to CreateInvoiceScreen
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: () => _showAddActionSheet(context, liveCustomer),
+                      onPressed: () {
+                        HapticFeedback.lightImpact();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => CreateInvoiceScreen(preselectedCustomer: liveCustomer),
+                          ),
+                        );
+                      },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.vyaparPink,
                         foregroundColor: Colors.white,

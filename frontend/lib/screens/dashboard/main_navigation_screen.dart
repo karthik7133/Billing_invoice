@@ -98,78 +98,155 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     HapticFeedback.mediumImpact();
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       backgroundColor: Colors.white,
       builder: (ctx) => SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE2E8F0),
-                  borderRadius: BorderRadius.circular(2),
+              // Handle
+              Center(
+                child: Container(
+                  width: 40, height: 4,
+                  margin: const EdgeInsets.only(bottom: 18),
+                  decoration: BoxDecoration(color: const Color(0xFFE2E8F0), borderRadius: BorderRadius.circular(2)),
                 ),
               ),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Create New',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
-                  ),
-                ),
+              const Text(
+                'What would you like to do?',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
               ),
               const SizedBox(height: 4),
-              ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-                leading: Container(
-                  width: 44, height: 44,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEFF6FF),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.receipt_outlined, color: Color(0xFF2563EB), size: 22),
-                ),
-                title: const Text('Sale Invoice', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF1E293B))),
-                subtitle: const Text('Create a GST tax invoice', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-                trailing: const Icon(Icons.chevron_right, color: Color(0xFF94A3B8)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const CreateInvoiceScreen()),
-                  );
-                },
+              const Text(
+                'Choose an action to get started',
+                style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
               ),
-              ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-                leading: Container(
-                  width: 44, height: 44,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFF7ED),
-                    borderRadius: BorderRadius.circular(12),
+              const SizedBox(height: 20),
+              // 2x2 grid of action cards
+              Row(
+                children: [
+                  _HomeActionCard(
+                    icon: Icons.receipt_outlined,
+                    label: 'Sale Invoice',
+                    color: const Color(0xFF2563EB),
+                    bg: const Color(0xFFEFF6FF),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const CreateInvoiceScreen()),
+                      );
+                    },
                   ),
-                  child: const Icon(Icons.shopping_cart_outlined, color: Color(0xFFEA580C), size: 22),
-                ),
-                title: const Text('Purchase Transaction', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF1E293B))),
-                subtitle: const Text('Record a purchase from a party', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-                trailing: const Icon(Icons.chevron_right, color: Color(0xFF94A3B8)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const CustomerListScreen()),
-                  );
-                },
+                  const SizedBox(width: 12),
+                  _HomeActionCard(
+                    icon: Icons.shopping_bag_outlined,
+                    label: 'Purchase',
+                    color: const Color(0xFFEA580C),
+                    bg: const Color(0xFFFFF7ED),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const CustomerListScreen()),
+                      );
+                    },
+                  ),
+                ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  _HomeActionCard(
+                    icon: Icons.payments_outlined,
+                    label: 'Payment In',
+                    color: const Color(0xFF059669),
+                    bg: const Color(0xFFECFDF5),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const CustomerListScreen()),
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 12),
+                  _HomeActionCard(
+                    icon: Icons.people_outlined,
+                    label: 'Add Party',
+                    color: const Color(0xFF7C3AED),
+                    bg: const Color(0xFFF5F3FF),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const CustomerListScreen()),
+                      );
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Home + Button Action Card ────────────────────────────────────────────────
+
+class _HomeActionCard extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final Color bg;
+  final VoidCallback onTap;
+
+  const _HomeActionCard({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.bg,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 18),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: color.withValues(alpha: 0.2), width: 1.2),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(color: color.withValues(alpha: 0.15), blurRadius: 8, offset: const Offset(0, 3)),
+                  ],
+                ),
+                child: Icon(icon, color: color, size: 24),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                label,
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: color),
+              ),
             ],
           ),
         ),
