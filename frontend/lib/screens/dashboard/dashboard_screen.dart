@@ -52,6 +52,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final busP = Provider.of<BusinessProvider>(context, listen: false);
     final prodP = Provider.of<ProductProvider>(context, listen: false);
 
+    // ── Always re-inject active company BEFORE any fetch ─────────────────────
+    // busP.business.id may be a local seed ID on first load, but ensureInitialized
+    // guarantees we read the cache-persisted active company correctly.
+    await busP.ensureInitialized();
+    final activeId = busP.activeCompanyId;
+    if (activeId.isNotEmpty) {
+      custP.setActiveCompany(activeId);
+      invP.setActiveCompany(activeId);
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    if (!mounted) return;
+
     await BackendSyncService.instance.forceSync(
       authProvider: authP,
       businessProvider: busP,
@@ -59,6 +72,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
       productProvider: prodP,
       invoiceProvider: invP,
     );
+
+    // After fetchBusinessProfile completes, the business.id may have been
+    // updated to the real MongoDB _id. Re-sync the company scope with that ID.
+    if (!mounted) return;
+    final realId = busP.activeCompanyId;
+    if (realId.isNotEmpty && realId != activeId) {
+      custP.setActiveCompany(realId);
+      invP.setActiveCompany(realId);
+      custP.fetchCustomers();
+      invP.fetchInvoices();
+    }
   }
 
   @override

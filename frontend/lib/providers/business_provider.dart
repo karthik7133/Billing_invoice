@@ -182,18 +182,27 @@ class BusinessProvider with ChangeNotifier {
     }
   }
 
-  Future<void> fetchBusinessProfile() async {
+  Future<void> fetchBusinessProfile({void Function(String realId)? onIdResolved}) async {
     await _initFromCache();
     _isLoading = true;
     notifyListeners();
 
+    final previousId = _business.id;
     final res = await _api.get(Endpoints.business);
     _isLoading = false;
 
     if (res.success && res.data != null && res.data['business'] != null) {
       _business = BusinessModel.fromJson(res.data['business']);
       await _cache.saveBusiness(_business);
+      // Persist real MongoDB _id as the active company ID so future restarts
+      // immediately use the correct companyId for filtering
+      await _cache.saveActiveCompanyId(_business.id);
       await updateCompany(_business);
+
+      // Notify callers if the ID changed (local seed → real MongoDB ID)
+      if (onIdResolved != null && _business.id != previousId) {
+        onIdResolved(_business.id);
+      }
     }
     notifyListeners();
   }

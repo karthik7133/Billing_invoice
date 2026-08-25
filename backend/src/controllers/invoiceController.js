@@ -39,9 +39,15 @@ const getInvoices = async (req, res) => {
     const { status, search, startDate, endDate, period, companyId } = req.query;
     let query = { userId: req.user._id };
 
-    // Company isolation
+    // Company isolation — include records belonging to this company OR untagged legacy records
     if (companyId && companyId.trim()) {
-      query.companyId = companyId.trim();
+      const cid = companyId.trim();
+      query.$or = [
+        { companyId: cid },
+        { companyId: { $exists: false } },
+        { companyId: '' },
+        { companyId: null },
+      ];
     }
 
     // Status filter

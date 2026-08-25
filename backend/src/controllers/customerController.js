@@ -9,15 +9,33 @@ const getCustomers = async (req, res) => {
     const { search, customerType, companyId } = req.query;
     let query = { userId: req.user._id };
 
-    // ─── Company isolation ─────────────────────────────────────────────────────
-    // If a companyId is provided, filter strictly to that company.
-    // Existing records with no companyId (legacy) fall back to userId-only scope.
+    // Company isolation — include records belonging to this company OR untagged legacy records.
+    // Untagged records (companyId empty/null) were created before multi-company support
+    // and are shown for ALL companies until they are re-saved with a companyId.
     if (companyId && companyId.trim()) {
-      query.companyId = companyId.trim();
-    }
-    // ──────────────────────────────────────────────────────────────────────────
-
-    if (search) {
+      const cid = companyId.trim();
+      const companyFilter = [
+        { companyId: cid },
+        { companyId: { $exists: false } },
+        { companyId: '' },
+        { companyId: null },
+      ];
+      // If a search filter is also present, combine via $and
+      if (search) {
+        query.$and = [
+          { $or: companyFilter },
+          {
+            $or: [
+              { name: { $regex: search, $options: 'i' } },
+              { phone: { $regex: search, $options: 'i' } },
+              { gstin: { $regex: search, $options: 'i' } },
+            ],
+          },
+        ];
+      } else {
+        query.$or = companyFilter;
+      }
+    } else if (search) {
       query.$or = [
         { name: { $regex: search, $options: 'i' } },
         { phone: { $regex: search, $options: 'i' } },
@@ -50,11 +68,17 @@ const getCustomers = async (req, res) => {
       Customer.deleteMany({ _id: { $in: duplicateIds }, userId: req.user._id }).exec().catch(() => {});
     }
 
-    // Aggregate balances from Invoices (scoped to same companyId if provided)
+    // Aggregate balances from Invoices (include untagged legacy invoices)
     const customerIds = uniqueCustomers.map((c) => c._id);
     const invoiceMatchQuery = { customerId: { $in: customerIds } };
     if (companyId && companyId.trim()) {
-      invoiceMatchQuery.companyId = companyId.trim();
+      const cid = companyId.trim();
+      invoiceMatchQuery.$or = [
+        { companyId: cid },
+        { companyId: { $exists: false } },
+        { companyId: '' },
+        { companyId: null },
+      ];
     }
 
     const invoiceAgg = await Invoice.aggregate([

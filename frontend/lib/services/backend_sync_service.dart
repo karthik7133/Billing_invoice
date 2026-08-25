@@ -154,13 +154,25 @@ class BackendSyncService with ChangeNotifier {
     AuthProvider? authProvider,
   }) async {
     try {
-      final futures = <Future<dynamic>>[];
+      // ── Step 1: Fetch business profile FIRST ─────────────────────────────────
+      // We need the real MongoDB business._id before fetching customers/invoices
+      // so the companyId filter is correct. Use onIdResolved to handle ID changes
+      // (e.g. local seed ID 'comp_1' → real MongoDB ObjectId).
+      if (businessProvider != null) {
+        await businessProvider.fetchBusinessProfile(
+          onIdResolved: (realId) {
+            // The real MongoDB ID just came back — update providers immediately
+            customerProvider?.setActiveCompany(realId);
+            invoiceProvider?.setActiveCompany(realId);
+          },
+        );
+      }
+      // ─────────────────────────────────────────────────────────────────────────
 
+      // ── Step 2: Fetch everything else in parallel ────────────────────────────
+      final futures = <Future<dynamic>>[];
       if (authProvider != null && ApiClient().token != null) {
         futures.add(authProvider.fetchMe());
-      }
-      if (businessProvider != null) {
-        futures.add(businessProvider.fetchBusinessProfile());
       }
       if (customerProvider != null) {
         futures.add(customerProvider.fetchCustomers());
