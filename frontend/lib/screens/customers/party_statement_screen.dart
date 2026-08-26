@@ -538,7 +538,6 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
 
                   // 3-Stat Breakdown Row
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       _buildSummaryStatPill(
                         icon: Icons.shopping_bag_outlined,
@@ -547,6 +546,7 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
                         color: const Color(0xFF1E293B),
                         bgColor: const Color(0xFFF8FAFC),
                       ),
+                      const SizedBox(width: 6),
                       _buildSummaryStatPill(
                         icon: Icons.payments_outlined,
                         label: 'Total Received',
@@ -554,7 +554,8 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
                         color: const Color(0xFF16A34A),
                         bgColor: const Color(0xFFF0FDF4),
                       ),
-                      if (totalOverMoney > 0)
+                      if (totalOverMoney > 0) ...[
+                        const SizedBox(width: 6),
                         _buildSummaryStatPill(
                           icon: Icons.auto_awesome_rounded,
                           label: 'Over Amount',
@@ -562,6 +563,7 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
                           color: const Color(0xFF7C3AED),
                           bgColor: const Color(0xFFFAF5FF),
                         ),
+                      ],
                     ],
                   ),
                 ],
@@ -606,32 +608,42 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
     required Color color,
     required Color bgColor,
   }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 12, color: color),
-              const SizedBox(width: 4),
-              Text(
-                label,
-                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 12, color: color),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 2),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                amount,
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: color),
               ),
-            ],
-          ),
-          const SizedBox(height: 2),
-          Text(
-            amount,
-            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: color),
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }

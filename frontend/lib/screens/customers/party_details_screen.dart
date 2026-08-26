@@ -183,6 +183,7 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
                   children: [
                     // Left: Party Name & Phone
                     Expanded(
+                      flex: 5,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -193,6 +194,8 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
                               fontWeight: FontWeight.w800,
                               color: Color(0xFF1E293B),
                             ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 4),
                           GestureDetector(
@@ -217,51 +220,70 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
                         ],
                       ),
                     ),
+                    const SizedBox(width: 8),
                     // Right: Receivable / Advance / Balance
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              isAdvance
-                                  ? Icons.arrow_upward_rounded
-                                  : (isSettled ? Icons.check_circle_outline : Icons.arrow_downward_rounded),
-                              size: 16,
+                    Expanded(
+                      flex: 5,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                            decoration: BoxDecoration(
                               color: isAdvance
-                                  ? const Color(0xFF16A34A)
-                                  : (isSettled ? const Color(0xFF64748B) : const Color(0xFFDC2626)),
+                                  ? const Color(0xFFDCFCE7)
+                                  : (isSettled ? const Color(0xFFF1F5F9) : const Color(0xFFFEE2E2)),
+                              borderRadius: BorderRadius.circular(8),
                             ),
-                            const SizedBox(width: 4),
-                            Text(
-                              isAdvance
-                                  ? 'Advance: ${CurrencyFormatter.format(netBalance.abs())}'
-                                  : (isSettled
-                                      ? 'Settled: ₹ 0.00'
-                                      : 'Receivable: ${CurrencyFormatter.format(netBalance)}'),
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w800,
-                                color: isAdvance
-                                    ? const Color(0xFF16A34A)
-                                    : (isSettled ? const Color(0xFF64748B) : const Color(0xFFDC2626)),
-                              ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  isAdvance
+                                      ? Icons.arrow_upward_rounded
+                                      : (isSettled ? Icons.check_circle_outline : Icons.arrow_downward_rounded),
+                                  size: 14,
+                                  color: isAdvance
+                                      ? const Color(0xFF16A34A)
+                                      : (isSettled ? const Color(0xFF64748B) : const Color(0xFFDC2626)),
+                                ),
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: Text(
+                                    isAdvance
+                                        ? 'Advance: ${CurrencyFormatter.format(netBalance.abs())}'
+                                        : (isSettled
+                                            ? 'Settled'
+                                            : 'Due: ${CurrencyFormatter.format(netBalance)}'),
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w800,
+                                      color: isAdvance
+                                          ? const Color(0xFF16A34A)
+                                          : (isSettled ? const Color(0xFF64748B) : const Color(0xFFDC2626)),
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          isAdvance
-                              ? 'Party Over-Payment / Advance Credit'
-                              : (isSettled ? 'All dues settled' : "You'll Get from Party"),
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: isAdvance ? const Color(0xFF16A34A) : const Color(0xFF94A3B8),
-                            fontWeight: isAdvance ? FontWeight.w600 : FontWeight.normal,
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 3),
+                          Text(
+                            isAdvance
+                                ? "Advance Credit (You'll Give)"
+                                : (isSettled ? 'All dues settled' : "Receivable (You'll Get)"),
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              color: isAdvance ? const Color(0xFF16A34A) : const Color(0xFF94A3B8),
+                              fontWeight: isAdvance ? FontWeight.w600 : FontWeight.normal,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -269,6 +291,7 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
                 if (totalOverMoney > 0) ...[
                   const SizedBox(height: 10),
                   Container(
+                    width: double.infinity,
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
                       color: const Color(0xFFFAF5FF),
@@ -279,12 +302,16 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
                       children: [
                         const Icon(Icons.auto_awesome_rounded, size: 14, color: Color(0xFF7C3AED)),
                         const SizedBox(width: 6),
-                        Text(
-                          'Total Over-Payment on bills: ${CurrencyFormatter.format(totalOverMoney)}',
-                          style: const TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF7C3AED),
+                        Expanded(
+                          child: Text(
+                            'Total Over-Payment on bills: ${CurrencyFormatter.format(totalOverMoney)}',
+                            style: const TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF7C3AED),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],
@@ -622,13 +649,16 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
           MaterialPageRoute(builder: (ctx) => InvoiceDetailScreen(invoice: invoice)),
         );
       },
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(14),
       child: Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: hasOver ? const Color(0xFFD8B4FE) : const Color(0xFFE2E8F0)),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: hasOver ? const Color(0xFFD8B4FE) : const Color(0xFFE2E8F0),
+            width: hasOver ? 1.2 : 1.0,
+          ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.02),
@@ -638,24 +668,29 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
           ],
         ),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Top Row: Type & Badges (Left) and Invoice # & Date (Right)
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Type & Badge — "Purchase" from customer's perspective
+                // Left: Purchase title + Status pills (wrapped to prevent overflow)
                 Expanded(
-                  child: Row(
+                  child: Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 6,
+                    runSpacing: 4,
                     children: [
                       const Text(
                         'Purchase',
                         style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
                       ),
-                      const SizedBox(width: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                         decoration: BoxDecoration(
                           color: isPaid ? const Color(0xFFE6F7F0) : const Color(0xFFFEF3C7),
-                          borderRadius: BorderRadius.circular(4),
+                          borderRadius: BorderRadius.circular(5),
                         ),
                         child: Text(
                           isPaid ? 'PAID' : 'UNPAID',
@@ -666,13 +701,12 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
                           ),
                         ),
                       ),
-                      if (hasOver) ...[
-                        const SizedBox(width: 6),
+                      if (hasOver)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
                             color: const Color(0xFFF3E8FF),
-                            borderRadius: BorderRadius.circular(4),
+                            borderRadius: BorderRadius.circular(5),
                             border: Border.all(color: const Color(0xFFD8B4FE), width: 0.8),
                           ),
                           child: Text(
@@ -684,18 +718,19 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
                             ),
                           ),
                         ),
-                      ],
                     ],
                   ),
                 ),
-                // Invoice No & Date
+                const SizedBox(width: 8),
+                // Right: Invoice # & Date
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
                       '#${invoice.invoiceNumber}',
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF475569)),
                     ),
+                    const SizedBox(height: 1),
                     Text(
                       dateStr,
                       style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
@@ -704,116 +739,171 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                // Total, Paid & Balance
-                Row(
-                  children: [
-                    Column(
+
+            const SizedBox(height: 10),
+
+            // Middle Section: Financial Metrics Banner (Responsive & Guaranteed 0 Overflow)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFF1F5F9)),
+              ),
+              child: Row(
+                children: [
+                  // Bill Total
+                  Expanded(
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Bill Total', style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
+                        const Text('Bill Total', style: TextStyle(fontSize: 10.5, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
                         const SizedBox(height: 2),
-                        Text(
-                          CurrencyFormatter.format(invoice.grandTotal),
-                          style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            CurrencyFormatter.format(invoice.grandTotal),
+                            style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
+                          ),
                         ),
                       ],
                     ),
-                    if (invoice.amountPaid > 0) ...[
-                      const SizedBox(width: 16),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Paid', style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
-                          const SizedBox(height: 2),
-                          Text(
+                  ),
+
+                  // Paid Amount
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        const Text('Paid Amount', style: TextStyle(fontSize: 10.5, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 2),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.center,
+                          child: Text(
                             CurrencyFormatter.format(invoice.amountPaid),
                             style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: Color(0xFF16A34A)),
                           ),
-                        ],
-                      ),
-                    ],
-                    const SizedBox(width: 16),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Balance', style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
-                        const SizedBox(height: 2),
-                        Text(
-                          CurrencyFormatter.format(invoice.balanceDue),
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w800,
-                            color: invoice.balanceDue > 0 ? const Color(0xFFEF4444) : const Color(0xFF1E293B),
-                          ),
                         ),
                       ],
                     ),
-                  ],
-                ),
-                // Print, Share, 3 dots actions
-                Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.print_outlined, size: 20, color: Color(0xFF64748B)),
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (ctx) => InvoicePdfPreviewScreen(invoice: invoice),
-                          ),
-                        );
-                      },
-                      tooltip: 'Print / PDF',
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.share_outlined, size: 20, color: Color(0xFF64748B)),
-                      onPressed: () async {
-                        PdfProgressDialog.show(context, message: 'Preparing Invoice PDF...');
-                        try {
-                          final bytes = await PdfInvoiceService.generateTaxInvoicePdf(invoice);
-                          await ShareService.sharePdf(bytes, filename: 'Invoice_${invoice.invoiceNumber}.pdf');
-                        } finally {
-                          PdfProgressDialog.hide();
-                        }
-                      },
-                      tooltip: 'Share',
-                    ),
-                    PopupMenuButton<String>(
-                      icon: const Icon(Icons.more_vert, size: 20, color: Color(0xFF64748B)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      onSelected: (action) {
-                        if (action == 'mark_paid') {
-                          invoiceProvider.markInvoiceAsPaid(invoice.id);
-                        } else if (action == 'delete') {
-                          invoiceProvider.deleteInvoice(invoice.id);
-                        }
-                      },
-                      itemBuilder: (_) => [
-                        if (!isPaid)
-                          const PopupMenuItem(
-                            value: 'mark_paid',
-                            child: Row(
-                              children: [
-                                Icon(Icons.check_circle_outline, color: Color(0xFF059669), size: 18),
-                                SizedBox(width: 8),
-                                Text('Mark as Paid'),
-                              ],
+                  ),
+
+                  // Balance Due
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        const Text('Balance Due', style: TextStyle(fontSize: 10.5, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 2),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerRight,
+                          child: Text(
+                            CurrencyFormatter.format(invoice.balanceDue),
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w800,
+                              color: invoice.balanceDue > 0 ? const Color(0xFFEF4444) : const Color(0xFF64748B),
                             ),
                           ),
-                        const PopupMenuItem(
-                          value: 'delete',
-                          child: Row(
-                            children: [
-                              Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
-                              SizedBox(width: 8),
-                              Text('Delete', style: TextStyle(color: Colors.redAccent)),
-                            ],
-                          ),
                         ),
                       ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 6),
+
+            // Bottom Action Bar: Print, Share, 3-dots
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                // Quick Print
+                InkWell(
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (ctx) => InvoicePdfPreviewScreen(invoice: invoice),
+                      ),
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(6),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.print_outlined, size: 16, color: Color(0xFF475569)),
+                        SizedBox(width: 4),
+                        Text('Print', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF475569))),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Quick Share
+                InkWell(
+                  onTap: () async {
+                    PdfProgressDialog.show(context, message: 'Preparing Invoice PDF...');
+                    try {
+                      final bytes = await PdfInvoiceService.generateTaxInvoicePdf(invoice);
+                      await ShareService.sharePdf(bytes, filename: 'Invoice_${invoice.invoiceNumber}.pdf');
+                    } finally {
+                      PdfProgressDialog.hide();
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(6),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.share_outlined, size: 16, color: Color(0xFF475569)),
+                        SizedBox(width: 4),
+                        Text('Share', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF475569))),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                // 3-dot Menu
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert, size: 18, color: Color(0xFF64748B)),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  onSelected: (action) {
+                    if (action == 'mark_paid') {
+                      invoiceProvider.markInvoiceAsPaid(invoice.id);
+                    } else if (action == 'delete') {
+                      invoiceProvider.deleteInvoice(invoice.id);
+                    }
+                  },
+                  itemBuilder: (_) => [
+                    if (!isPaid)
+                      const PopupMenuItem(
+                        value: 'mark_paid',
+                        child: Row(
+                          children: [
+                            Icon(Icons.check_circle_outline, color: Color(0xFF059669), size: 18),
+                            SizedBox(width: 8),
+                            Text('Mark as Paid'),
+                          ],
+                        ),
+                      ),
+                    const PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
+                          SizedBox(width: 8),
+                          Text('Delete', style: TextStyle(color: Colors.redAccent)),
+                        ],
+                      ),
                     ),
                   ],
                 ),
