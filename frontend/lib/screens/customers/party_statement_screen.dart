@@ -651,7 +651,7 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
   // ─── Multi-Column Horizontally Scrollable Ledger Table ──────────────────────
 
   Widget _buildHorizontalScrollableTable(List<_StatementRow> rows) {
-    const tableWidth = 840.0;
+    const tableWidth = 920.0;
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -670,12 +670,12 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
               child: const Row(
                 children: [
                   SizedBox(width: 90, child: Text('DATE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white))),
-                  SizedBox(width: 140, child: Text('TXN TYPE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white))),
+                  SizedBox(width: 110, child: Text('TXN TYPE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white))),
                   SizedBox(width: 120, child: Text('BILL / REF #', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white))),
-                  SizedBox(width: 120, child: Text('BILL AMT (₹)', textAlign: TextAlign.right, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white))),
-                  SizedBox(width: 120, child: Text('RECEIVED (₹)', textAlign: TextAlign.right, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white))),
-                  SizedBox(width: 110, child: Text('OVER AMT (₹)', textAlign: TextAlign.right, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white))),
-                  SizedBox(width: 116, child: Text('BALANCE (₹)', textAlign: TextAlign.right, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white))),
+                  SizedBox(width: 130, child: Text('BILL AMT (₹)', textAlign: TextAlign.right, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white))),
+                  SizedBox(width: 130, child: Text('RECEIVED (₹)', textAlign: TextAlign.right, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white))),
+                  SizedBox(width: 130, child: Text('OVER AMT (₹)', textAlign: TextAlign.right, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white))),
+                  SizedBox(width: 150, child: Text('BALANCE (₹)', textAlign: TextAlign.right, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white))),
                 ],
               ),
             ),
@@ -732,12 +732,13 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
                                 fontWeight: isOpening ? FontWeight.w800 : FontWeight.w600,
                                 color: const Color(0xFF334155),
                               ),
+                              maxLines: 1,
                             ),
                           ),
 
                           // 2. Txn Type
                           SizedBox(
-                            width: 140,
+                            width: 110,
                             child: Row(
                               children: [
                                 Container(
@@ -782,39 +783,47 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
 
                           // 4. Bill Amount (Debit)
                           SizedBox(
-                            width: 120,
-                            child: Text(
-                              row.billAmount != null
-                                  ? CurrencyFormatter.format(row.billAmount!)
-                                  : '-',
-                              textAlign: TextAlign.right,
-                              style: const TextStyle(
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF0F172A),
+                            width: 130,
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerRight,
+                              child: Text(
+                                row.billAmount != null
+                                    ? CurrencyFormatter.format(row.billAmount!)
+                                    : '-',
+                                textAlign: TextAlign.right,
+                                style: const TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF0F172A),
+                                ),
                               ),
                             ),
                           ),
 
                           // 5. Received Amount (Credit)
                           SizedBox(
-                            width: 120,
-                            child: Text(
-                              row.receivedAmount != null
-                                  ? CurrencyFormatter.format(row.receivedAmount!)
-                                  : '-',
-                              textAlign: TextAlign.right,
-                              style: const TextStyle(
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w800,
-                                color: Color(0xFF16A34A),
+                            width: 130,
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerRight,
+                              child: Text(
+                                row.receivedAmount != null
+                                    ? CurrencyFormatter.format(row.receivedAmount!)
+                                    : '-',
+                                textAlign: TextAlign.right,
+                                style: const TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF16A34A),
+                                ),
                               ),
                             ),
                           ),
 
                           // 6. Over Amount (Excess Paid on this bill)
                           SizedBox(
-                            width: 110,
+                            width: 130,
                             child: row.overAmount != null && row.overAmount! > 0
                                 ? Align(
                                     alignment: Alignment.centerRight,
@@ -844,18 +853,22 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
 
                           // 7. Running Balance (with Dr/Cr tag)
                           SizedBox(
-                            width: 116,
-                            child: Text(
-                              isZeroBalance
-                                  ? '₹ 0.00'
-                                  : '${CurrencyFormatter.format(row.balance.abs())} ${isPositiveBalance ? "Dr" : "Cr"}',
-                              textAlign: TextAlign.right,
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w900,
-                                color: isPositiveBalance
-                                    ? const Color(0xFFDC2626)
-                                    : (isZeroBalance ? const Color(0xFF16A34A) : const Color(0xFF16A34A)),
+                            width: 150,
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerRight,
+                              child: Text(
+                                isZeroBalance
+                                    ? '₹ 0.00'
+                                    : '${CurrencyFormatter.format(row.balance.abs())} ${isPositiveBalance ? "Dr" : "Cr"}',
+                                textAlign: TextAlign.right,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w900,
+                                  color: isPositiveBalance
+                                      ? const Color(0xFFDC2626)
+                                      : (isZeroBalance ? const Color(0xFF16A34A) : const Color(0xFF16A34A)),
+                                ),
                               ),
                             ),
                           ),
@@ -917,36 +930,43 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: isOpening
-                                ? const Color(0xFFF1F5F9)
-                                : (isPurchase ? const Color(0xFFEFF6FF) : const Color(0xFFDCFCE7)),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            isOpening ? 'OPENING' : (isPurchase ? 'PURCHASE' : 'PAYMENT RECEIVED'),
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w800,
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
                               color: isOpening
-                                  ? const Color(0xFF475569)
-                                  : (isPurchase ? const Color(0xFF2563EB) : const Color(0xFF16A34A)),
+                                  ? const Color(0xFFF1F5F9)
+                                  : (isPurchase ? const Color(0xFFEFF6FF) : const Color(0xFFDCFCE7)),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              isOpening ? 'OPENING' : (isPurchase ? 'PURCHASE' : 'PAYMENT RECEIVED'),
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                color: isOpening
+                                    ? const Color(0xFF475569)
+                                    : (isPurchase ? const Color(0xFF2563EB) : const Color(0xFF16A34A)),
+                              ),
                             ),
                           ),
-                        ),
-                        if (row.refNo != '-') ...[
-                          const SizedBox(width: 8),
-                          Text(
-                            row.refNo,
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF475569)),
-                          ),
+                          if (row.refNo != '-') ...[
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                row.refNo,
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF475569)),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
+                    const SizedBox(width: 8),
                     Text(
                       dateStr,
                       style: const TextStyle(fontSize: 11.5, color: Color(0xFF94A3B8), fontWeight: FontWeight.w600),
@@ -958,31 +978,38 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     // Amount (Billed / Paid)
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          isPurchase ? 'Bill Amount' : (isPayment ? 'Paid / Received' : 'Starting'),
-                          style: const TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8)),
-                        ),
-                        const SizedBox(height: 1),
-                        Text(
-                          row.billAmount != null
-                              ? CurrencyFormatter.format(row.billAmount!)
-                              : (row.receivedAmount != null
-                                  ? CurrencyFormatter.format(row.receivedAmount!)
-                                  : '₹ 0.00'),
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                            color: isPayment ? const Color(0xFF16A34A) : const Color(0xFF0F172A),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            isPurchase ? 'Bill Amount' : (isPayment ? 'Paid / Received' : 'Starting'),
+                            style: const TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8)),
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 1),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              row.billAmount != null
+                                  ? CurrencyFormatter.format(row.billAmount!)
+                                  : (row.receivedAmount != null
+                                      ? CurrencyFormatter.format(row.receivedAmount!)
+                                      : '₹ 0.00'),
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                                color: isPayment ? const Color(0xFF16A34A) : const Color(0xFF0F172A),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
 
                     // Over Amount Badge if excess paid
-                    if (row.overAmount != null && row.overAmount! > 0)
+                    if (row.overAmount != null && row.overAmount! > 0) ...[
+                      const SizedBox(width: 6),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
@@ -1000,26 +1027,34 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
                           ],
                         ),
                       ),
+                    ],
 
+                    const SizedBox(width: 8),
                     // Balance after this transaction
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        const Text('Running Balance', style: TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8))),
-                        const SizedBox(height: 1),
-                        Text(
-                          isZeroBalance
-                              ? '₹ 0.00'
-                              : '${CurrencyFormatter.format(row.balance.abs())} ${isPositiveBalance ? "Dr" : "Cr"}',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w900,
-                            color: isPositiveBalance
-                                ? const Color(0xFFDC2626)
-                                : (isZeroBalance ? const Color(0xFF16A34A) : const Color(0xFF16A34A)),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          const Text('Running Balance', style: TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8))),
+                          const SizedBox(height: 1),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              isZeroBalance
+                                  ? '₹ 0.00'
+                                  : '${CurrencyFormatter.format(row.balance.abs())} ${isPositiveBalance ? "Dr" : "Cr"}',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w900,
+                                color: isPositiveBalance
+                                    ? const Color(0xFFDC2626)
+                                    : (isZeroBalance ? const Color(0xFF16A34A) : const Color(0xFF16A34A)),
+                              ),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ],
                 ),
