@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
@@ -8,6 +9,7 @@ import '../../providers/business_provider.dart';
 import '../../providers/invoice_provider.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../widgets/custom_dropdown.dart';
+import '../../widgets/image_crop_dialog.dart';
 
 class BusinessProfileScreen extends StatefulWidget {
   const BusinessProfileScreen({super.key});
@@ -98,30 +100,123 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
     _termsController.dispose();
     super.dispose();
   }
-  /// Pick image from gallery and upload to Cloudinary, then save logo URL
+  /// Prompt source (Gallery/Camera), pick image, open interactive ImageCropDialog, and upload cropped logo
   Future<void> _pickAndUploadLogo() async {
-    // Capture ALL context-dependent refs before any await
     final invoiceProvider = context.read<InvoiceProvider>();
 
-    final picker = ImagePicker();
-    final XFile? picked = await picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 80,
-      maxWidth: 800,
+    // Show source picker bottom sheet
+    final ImageSource? source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(20),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE2E8F0),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const Text(
+                'Select Logo Source',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
+              ),
+              const SizedBox(height: 14),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.photo_library_rounded, color: Color(0xFF2563EB), size: 22),
+                ),
+                title: const Text('Choose from Gallery', style: TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: const Text('Pick existing company logo or image', style: TextStyle(fontSize: 12)),
+                trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Color(0xFF94A3B8)),
+                onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+              ),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF0FDF4),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.camera_alt_rounded, color: Color(0xFF16A34A), size: 22),
+                ),
+                title: const Text('Take Photo with Camera', style: TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: const Text('Capture photo of business card, stamp or seal', style: TextStyle(fontSize: 12)),
+                trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Color(0xFF94A3B8)),
+                onTap: () => Navigator.pop(ctx, ImageSource.camera),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
-    if (picked == null) return;
 
-    setState(() => _isUploadingLogo = true);
+    if (source == null) return;
 
     try {
-      final url = await invoiceProvider.uploadAttachment(picked);
+      final picker = ImagePicker();
+      final XFile? picked = await picker.pickImage(
+        source: source,
+        maxWidth: 2048,
+        maxHeight: 2048,
+        imageQuality: 95,
+      );
+      if (picked == null || !mounted) return;
+
+      final rawBytes = await picked.readAsBytes();
+      if (!mounted) return;
+
+      // Launch the interactive ImageCropDialog
+      final Uint8List? croppedBytes = await showDialog<Uint8List>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => ImageCropDialog(
+          imageBytes: rawBytes,
+          title: 'Crop & Resize Logo',
+        ),
+      );
+
+      if (croppedBytes == null || !mounted) return;
+
+      setState(() => _isUploadingLogo = true);
+
+      // Upload the cropped bytes directly to Cloudinary
+      final url = await invoiceProvider.uploadAttachment(
+        croppedBytes,
+        filename: 'company_logo_${DateTime.now().millisecondsSinceEpoch}.png',
+      );
+
       if (url != null && mounted) {
         setState(() => _logoController.text = url);
         _saveProfile();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Company logo cropped & updated successfully!'),
+            backgroundColor: AppColors.success,
+          ),
+        );
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Logo upload failed. Please try again.'),
+            content: Text('Logo upload failed. Please check connection and try again.'),
             backgroundColor: Colors.redAccent,
           ),
         );
@@ -144,9 +239,26 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Business Logo',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF374151)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Business Logo',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF374151)),
+              ),
+              if (logoUrl.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFDCFCE7),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Text(
+                    'Active Logo',
+                    style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Color(0xFF16A34A)),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 10),
           Row(
@@ -154,27 +266,66 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
             children: [
               GestureDetector(
                 onTap: _isUploadingLogo ? null : _pickAndUploadLogo,
-                child: Container(
-                  width: 72,
-                  height: 72,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(14),
-                    color: const Color(0xFFF1F5F9),
-                    border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
-                    image: logoUrl.isNotEmpty && logoUrl.startsWith('http')
-                        ? DecorationImage(image: NetworkImage(logoUrl), fit: BoxFit.cover)
-                        : null,
-                  ),
-                  child: _isUploadingLogo
-                      ? const Center(
-                          child: SizedBox(
-                            width: 24, height: 24,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                child: Stack(
+                  children: [
+                    Container(
+                      width: 78,
+                      height: 78,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        color: Colors.white,
+                        border: Border.all(
+                          color: logoUrl.isNotEmpty ? AppColors.primary : const Color(0xFFE2E8F0),
+                          width: 1.5,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.04),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
                           ),
-                        )
-                      : (logoUrl.isEmpty || !logoUrl.startsWith('http'))
-                          ? const Icon(Icons.add_photo_alternate_outlined, size: 30, color: Color(0xFF94A3B8))
-                          : null,
+                        ],
+                        image: logoUrl.isNotEmpty && (logoUrl.startsWith('http') || logoUrl.startsWith('data:image'))
+                            ? DecorationImage(
+                                image: NetworkImage(logoUrl),
+                                fit: BoxFit.contain,
+                              )
+                            : null,
+                      ),
+                      child: _isUploadingLogo
+                          ? const Center(
+                              child: SizedBox(
+                                width: 24, height: 24,
+                                child: CircularProgressIndicator(strokeWidth: 2.5),
+                              ),
+                            )
+                          : (logoUrl.isEmpty || (!logoUrl.startsWith('http') && !logoUrl.startsWith('data:image')))
+                              ? const Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.add_photo_alternate_outlined, size: 28, color: Color(0xFF94A3B8)),
+                                      SizedBox(height: 2),
+                                      Text('Add Logo', style: TextStyle(fontSize: 9.5, color: Color(0xFF94A3B8), fontWeight: FontWeight.w600)),
+                                    ],
+                                  ),
+                                )
+                              : null,
+                    ),
+                    if (logoUrl.isNotEmpty && !_isUploadingLogo)
+                      Positioned(
+                        right: 2,
+                        bottom: 2,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: const BoxDecoration(
+                            color: AppColors.primary,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.crop_rotate_rounded, size: 12, color: Colors.white),
+                        ),
+                      ),
+                  ],
                 ),
               ),
               const SizedBox(width: 14),
@@ -187,18 +338,18 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
                       child: OutlinedButton.icon(
                         onPressed: _isUploadingLogo ? null : _pickAndUploadLogo,
                         icon: Icon(
-                          _isUploadingLogo ? Icons.hourglass_top_rounded : Icons.upload_rounded,
+                          _isUploadingLogo ? Icons.hourglass_top_rounded : Icons.crop_rotate_rounded,
                           size: 16,
                         ),
                         label: Text(
                           _isUploadingLogo
-                              ? 'Uploading...'
-                              : (logoUrl.isNotEmpty ? 'Change Logo' : 'Upload Logo'),
-                          style: const TextStyle(fontSize: 13),
+                              ? 'Uploading & Cropping...'
+                              : (logoUrl.isNotEmpty ? 'Change & Crop Logo' : 'Upload & Crop Logo'),
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
                         ),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppColors.primary,
-                          side: const BorderSide(color: AppColors.primary),
+                          side: const BorderSide(color: AppColors.primary, width: 1.2),
                           padding: const EdgeInsets.symmetric(vertical: 10),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         ),
@@ -216,7 +367,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
                           icon: const Icon(Icons.delete_outline, size: 14, color: Colors.redAccent),
                           label: const Text(
                             'Remove Logo',
-                            style: TextStyle(fontSize: 12, color: Colors.redAccent),
+                            style: TextStyle(fontSize: 12, color: Colors.redAccent, fontWeight: FontWeight.w600),
                           ),
                           style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 4)),
                         ),
@@ -224,7 +375,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
                     ],
                     const SizedBox(height: 4),
                     const Text(
-                      'Shown on home screen & all PDF invoices',
+                      'Resized & shown on Dashboard, Invoices & PDF bills',
                       style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
                     ),
                   ],

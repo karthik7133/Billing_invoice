@@ -248,6 +248,21 @@ class BusinessProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> updateCompanyLogo(String companyId, String logoUrl) async {
+    final idx = _companies.indexWhere((c) => c.id == companyId);
+    if (idx != -1) {
+      final updated = _companies[idx].copyWith(logo: logoUrl);
+      _companies[idx] = updated;
+      if (_business.id == companyId) {
+        _business = updated;
+        await updateBusinessProfile(updated);
+      } else {
+        await _cache.saveCompanies(_companies);
+      }
+      notifyListeners();
+    }
+  }
+
   void incrementNextInvoiceNumber() {
     _business = _business.copyWith(nextInvoiceNumber: _business.nextInvoiceNumber + 1);
     updateBusinessProfile(_business);

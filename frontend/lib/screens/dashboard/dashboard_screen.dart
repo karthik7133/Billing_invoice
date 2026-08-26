@@ -139,8 +139,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           child: Center(
             child: Container(
-              width: 32,
-              height: 32,
+              width: 34,
+              height: 34,
               decoration: BoxDecoration(
                 gradient: logoUrl.isEmpty
                     ? const LinearGradient(
@@ -149,12 +149,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         end: Alignment.bottomRight,
                       )
                     : null,
-                color: logoUrl.isNotEmpty ? null : null,
-                borderRadius: BorderRadius.circular(9),
+                color: logoUrl.isNotEmpty ? Colors.white : null,
+                borderRadius: BorderRadius.circular(10),
+                border: logoUrl.isNotEmpty ? Border.all(color: const Color(0xFFE2E8F0), width: 1.0) : null,
                 image: logoUrl.isNotEmpty
                     ? DecorationImage(
                         image: NetworkImage(logoUrl),
-                        fit: BoxFit.cover,
+                        fit: BoxFit.contain,
                       )
                     : null,
               ),

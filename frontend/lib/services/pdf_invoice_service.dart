@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:intl/intl.dart';
@@ -17,6 +19,46 @@ class PdfInvoiceService {
   static final PdfColor darkText = PdfColor.fromHex('#1A1A1A');
   static final PdfColor lightPurple = PdfColor.fromHex('#F0EFFF');
 
+  /// Resolves the company logo image from network, base64 data URI, local file, or asset bundle fallback.
+  static Future<pw.ImageProvider?> _resolveLogoImage(String? logoUrl) async {
+    if (logoUrl != null && logoUrl.trim().isNotEmpty) {
+      final trimmed = logoUrl.trim();
+      try {
+        // 1. Network image (Cloudinary / HTTPS / HTTP)
+        if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+          return await networkImage(trimmed);
+        }
+        // 2. Base64 or Data URI
+        if (trimmed.startsWith('data:image') || trimmed.contains('base64,')) {
+          final commaIdx = trimmed.indexOf(',');
+          final base64Str = commaIdx != -1 ? trimmed.substring(commaIdx + 1) : trimmed;
+          final bytes = base64Decode(base64Str.replaceAll(RegExp(r'\s+'), ''));
+          return pw.MemoryImage(bytes);
+        }
+        // 3. Local file
+        final file = File(trimmed);
+        if (await file.exists()) {
+          final bytes = await file.readAsBytes();
+          return pw.MemoryImage(bytes);
+        }
+      } catch (_) {
+        // Fall through to asset fallback on error
+      }
+    }
+
+    // Default fallback: crab_logo.png from assets
+    try {
+      return await imageFromAssetBundle('assets/images/crab_logo.png');
+    } catch (_) {
+      try {
+        final byteData = await rootBundle.load('assets/images/crab_logo.png');
+        return pw.MemoryImage(byteData.buffer.asUint8List());
+      } catch (_) {
+        return null;
+      }
+    }
+  }
+
   static Future<Uint8List> generateTaxInvoicePdf(InvoiceModel invoice) async {
     final pdf = pw.Document();
 
@@ -29,23 +71,7 @@ class PdfInvoiceService {
     final customer = invoice.customerSnapshot;
 
     // Use company logo from businessSnapshot if available, else fall back to crab_logo.png
-    pw.ImageProvider? logoImage;
-    try {
-      if (business.logo.isNotEmpty && business.logo.startsWith('http')) {
-        // Use company's own logo
-        logoImage = await networkImage(business.logo);
-      } else {
-        // Fallback: default crab_logo.png asset
-        logoImage = await imageFromAssetBundle('assets/images/crab_logo.png');
-      }
-    } catch (_) {
-      try {
-        final byteData = await rootBundle.load('assets/images/crab_logo.png');
-        logoImage = pw.MemoryImage(byteData.buffer.asUint8List());
-      } catch (_) {
-        logoImage = null;
-      }
-    }
+    final logoImage = await _resolveLogoImage(business.logo);
 
     // Quantity calculations
     final totalQty = invoice.items.fold<double>(0, (sum, it) => sum + it.quantity);
@@ -554,21 +580,7 @@ class PdfInvoiceService {
             : BusinessModel(id: '', businessName: 'JMJ SEA FOODS'));
 
     // Use company logo if available, else fall back to crab_logo.png
-    pw.ImageProvider? logoImage;
-    try {
-      if (b.logo.isNotEmpty && b.logo.startsWith('http')) {
-        logoImage = await networkImage(b.logo);
-      } else {
-        logoImage = await imageFromAssetBundle('assets/images/crab_logo.png');
-      }
-    } catch (_) {
-      try {
-        final byteData = await rootBundle.load('assets/images/crab_logo.png');
-        logoImage = pw.MemoryImage(byteData.buffer.asUint8List());
-      } catch (_) {
-        logoImage = null;
-      }
-    }
+    final logoImage = await _resolveLogoImage(b.logo);
 
     final dfmt = DateFormat('dd-MM-yyyy');
     final dfmtShort = DateFormat('dd MMM yy');

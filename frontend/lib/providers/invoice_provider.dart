@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../models/invoice_model.dart';
@@ -333,14 +334,20 @@ class InvoiceProvider with ChangeNotifier {
   }
 
   /// Upload photo/attachment to Cloudinary via backend /api/upload
-  Future<String?> uploadAttachment(dynamic file) async {
+  Future<String?> uploadAttachment(dynamic file, {String? filename}) async {
     try {
       ApiResponse res;
-      if (file.path != null && file.path.isNotEmpty) {
+      if (file is Uint8List) {
+        final name = filename ?? 'logo_${DateTime.now().millisecondsSinceEpoch}.png';
+        res = await _api.uploadBytes(Endpoints.upload, file, name);
+      } else if (file is List<int>) {
+        final name = filename ?? 'logo_${DateTime.now().millisecondsSinceEpoch}.png';
+        res = await _api.uploadBytes(Endpoints.upload, file, name);
+      } else if (file.path != null && file.path.isNotEmpty) {
         res = await _api.uploadFile(Endpoints.upload, file.path);
       } else {
         final bytes = await file.readAsBytes();
-        res = await _api.uploadBytes(Endpoints.upload, bytes, file.name);
+        res = await _api.uploadBytes(Endpoints.upload, bytes, file.name ?? 'attachment.png');
       }
 
       if (res.success && res.data != null && res.data['url'] != null) {

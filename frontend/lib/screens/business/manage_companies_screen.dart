@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/business_model.dart';
 import '../../providers/auth_provider.dart';
@@ -10,6 +11,7 @@ import '../../providers/customer_provider.dart';
 import '../../providers/invoice_provider.dart';
 import '../../providers/product_provider.dart';
 import '../../services/backend_sync_service.dart';
+import '../../widgets/image_crop_dialog.dart';
 import '../../main.dart' show mainNavigationKey;
 import 'business_profile_screen.dart';
 
@@ -415,19 +417,69 @@ class _ManageCompaniesScreenState extends State<ManageCompaniesScreen>
               const SizedBox(height: 6),
             ],
 
-            // Company Title and 3-dots Menu
+            // Company Logo + Title and 3-dots Menu
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Expanded(
-                  child: Text(
-                    company.businessName.toUpperCase(),
-                    style: const TextStyle(
-                      fontSize: 16.5,
-                      fontWeight: FontWeight.w900,
-                      color: Color(0xFF1E293B),
-                      letterSpacing: 0.3,
+                // Company Logo Thumbnail or Initial Avatar
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: company.logo.isNotEmpty ? const Color(0xFFBFDBFE) : const Color(0xFFE2E8F0),
+                      width: 1.2,
                     ),
+                    image: company.logo.isNotEmpty && (company.logo.startsWith('http') || company.logo.startsWith('data:image'))
+                        ? DecorationImage(
+                            image: NetworkImage(company.logo),
+                            fit: BoxFit.contain,
+                          )
+                        : null,
+                  ),
+                  child: company.logo.isEmpty || (!company.logo.startsWith('http') && !company.logo.startsWith('data:image'))
+                      ? Center(
+                          child: Text(
+                            company.businessName.isNotEmpty ? company.businessName[0].toUpperCase() : 'C',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF2563EB),
+                            ),
+                          ),
+                        )
+                      : null,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        company.businessName.toUpperCase(),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF1E293B),
+                          letterSpacing: 0.3,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          const Icon(Icons.phone_outlined, size: 13, color: Color(0xFF64748B)),
+                          const SizedBox(width: 4),
+                          Text(
+                            phoneText,
+                            style: const TextStyle(fontSize: 12.5, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
                 PopupMenuButton<String>(
@@ -447,6 +499,8 @@ class _ManageCompaniesScreenState extends State<ManageCompaniesScreen>
                       context.read<ProductProvider>().fetchProducts();
                       mainNavigationKey.currentState?.switchToHomeTab();
                       Navigator.of(context).popUntil((route) => route.isFirst);
+                    } else if (val == 'logo') {
+                      _pickCropAndSaveCompanyLogo(context, company, businessProvider);
                     } else if (val == 'edit') {
                       await businessProvider.switchToCompany(company.id);
                       if (!context.mounted) return;
@@ -471,6 +525,16 @@ class _ManageCompaniesScreenState extends State<ManageCompaniesScreen>
                           ],
                         ),
                       ),
+                    const PopupMenuItem(
+                      value: 'logo',
+                      child: Row(
+                        children: [
+                          Icon(Icons.crop_rotate_rounded, size: 18, color: Color(0xFF2563EB)),
+                          SizedBox(width: 10),
+                          Text('Upload / Crop Logo'),
+                        ],
+                      ),
+                    ),
                     const PopupMenuItem(
                       value: 'edit',
                       child: Row(
@@ -511,19 +575,7 @@ class _ManageCompaniesScreenState extends State<ManageCompaniesScreen>
               ],
             ),
 
-            const SizedBox(height: 6),
-
-            // Phone Row
-            Row(
-              children: [
-                const Icon(Icons.phone_outlined, size: 14, color: Color(0xFF64748B)),
-                const SizedBox(width: 6),
-                Text(
-                  phoneText,
-                  style: const TextStyle(fontSize: 13, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
-                ),
-              ],
-            ),
+            const SizedBox(height: 8),
 
             const SizedBox(height: 4),
 
@@ -584,6 +636,57 @@ class _ManageCompaniesScreenState extends State<ManageCompaniesScreen>
     );
   }
 
+  Future<void> _pickCropAndSaveCompanyLogo(
+    BuildContext context,
+    BusinessModel company,
+    BusinessProvider businessProvider,
+  ) async {
+    final invoiceProvider = context.read<InvoiceProvider>();
+    final croppedBytes = await ImageCropDialog.pickAndCrop(
+      context,
+      source: ImageSource.gallery,
+      title: 'Crop Logo for ${company.businessName}',
+    );
+
+    if (croppedBytes == null || !context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Row(
+          children: [
+            SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+            SizedBox(width: 12),
+            Text('Uploading cropped company logo...'),
+          ],
+        ),
+        duration: Duration(seconds: 4),
+      ),
+    );
+
+    final url = await invoiceProvider.uploadAttachment(
+      croppedBytes,
+      filename: 'logo_${company.id}_${DateTime.now().millisecondsSinceEpoch}.png',
+    );
+
+    if (url != null && context.mounted) {
+      await businessProvider.updateCompanyLogo(company.id, url);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Logo updated for ${company.businessName}!'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } else if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Failed to upload logo. Please check connection.'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    }
+  }
+
   // ─── Add Company Dialog ───────────────────────────────────────────────────
 
   void _showAddCompanyDialog(BuildContext context) {
@@ -591,150 +694,269 @@ class _ManageCompaniesScreenState extends State<ManageCompaniesScreen>
     final phoneCtrl = TextEditingController(text: '9344920419');
     final gstinCtrl = TextEditingController();
     final cityCtrl = TextEditingController(text: 'Kakinada');
+    String logoUrl = '';
+    Uint8List? pendingLogoBytes;
+    bool isUploadingLogo = false;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        child: Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      margin: const EdgeInsets.only(bottom: 16),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE2E8F0),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Add New Company',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
-                      ),
-                      IconButton(
-                        onPressed: () => Navigator.pop(ctx),
-                        icon: const Icon(Icons.close, color: Color(0xFF94A3B8)),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: nameCtrl,
-                    autofocus: true,
-                    textCapitalization: TextCapitalization.characters,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                    decoration: InputDecoration(
-                      labelText: 'Company / Business Name *',
-                      hintText: 'e.g. BALAJI SEA FOODS',
-                      filled: true,
-                      fillColor: const Color(0xFFF8FAFC),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: phoneCtrl,
-                          keyboardType: TextInputType.phone,
-                          decoration: InputDecoration(
-                            labelText: 'Phone Number',
-                            filled: true,
-                            fillColor: const Color(0xFFF8FAFC),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                          ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (dialogCtx, setModalState) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(dialogCtx).viewInsets.bottom),
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE2E8F0),
+                          borderRadius: BorderRadius.circular(2),
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextField(
-                          controller: cityCtrl,
-                          decoration: InputDecoration(
-                            labelText: 'City',
-                            filled: true,
-                            fillColor: const Color(0xFFF8FAFC),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: gstinCtrl,
-                    textCapitalization: TextCapitalization.characters,
-                    decoration: InputDecoration(
-                      labelText: 'GSTIN (Optional)',
-                      hintText: '37AAAAA0000A1Z5',
-                      filled: true,
-                      fillColor: const Color(0xFFF8FAFC),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () async {
-                        final name = nameCtrl.text.trim();
-                        if (name.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Please enter company name')),
-                          );
-                          return;
-                        }
-                        final newComp = BusinessModel(
-                          id: 'comp_${DateTime.now().millisecondsSinceEpoch}',
-                          businessName: name,
-                          phone: phoneCtrl.text.trim(),
-                          city: cityCtrl.text.trim(),
-                          gstin: gstinCtrl.text.trim().toUpperCase(),
-                          syncOn: true,
-                          lastSaleCreated: '${DateFormat('dd/MM/yyyy').format(DateTime.now())} at ${DateFormat('hh:mm a').format(DateTime.now()).toLowerCase()}',
-                        );
-                        final busP = Provider.of<BusinessProvider>(context, listen: false);
-                        await busP.addCompany(newComp);
-                        if (ctx.mounted) Navigator.pop(ctx);
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Company "$name" created and activated!'),
-                              backgroundColor: AppColors.success,
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Add New Company',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.pop(dialogCtx),
+                          icon: const Icon(Icons.close, color: Color(0xFF94A3B8)),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Logo Picker Section
+                    Row(
+                      children: [
+                        GestureDetector(
+                          onTap: isUploadingLogo
+                              ? null
+                              : () async {
+                                  final bytes = await ImageCropDialog.pickAndCrop(
+                                    dialogCtx,
+                                    source: ImageSource.gallery,
+                                    title: 'Crop Logo for New Company',
+                                  );
+                                  if (bytes != null) {
+                                    setModalState(() {
+                                      pendingLogoBytes = bytes;
+                                    });
+                                  }
+                                },
+                          child: Container(
+                            width: 58,
+                            height: 58,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+                              image: pendingLogoBytes != null
+                                  ? DecorationImage(
+                                      image: MemoryImage(pendingLogoBytes!),
+                                      fit: BoxFit.contain,
+                                    )
+                                  : (logoUrl.isNotEmpty
+                                      ? DecorationImage(image: NetworkImage(logoUrl), fit: BoxFit.contain)
+                                      : null),
                             ),
-                          );
-                        }
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFDC2626),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                      ),
-                      child: const Text('Create & Activate Company', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+                            child: pendingLogoBytes == null && logoUrl.isEmpty
+                                ? const Center(
+                                    child: Icon(Icons.add_a_photo_outlined, size: 22, color: Color(0xFF64748B)),
+                                  )
+                                : null,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              OutlinedButton.icon(
+                                onPressed: isUploadingLogo
+                                    ? null
+                                    : () async {
+                                        final bytes = await ImageCropDialog.pickAndCrop(
+                                          dialogCtx,
+                                          source: ImageSource.gallery,
+                                          title: 'Crop Logo for New Company',
+                                        );
+                                        if (bytes != null) {
+                                          setModalState(() {
+                                            pendingLogoBytes = bytes;
+                                          });
+                                        }
+                                      },
+                                icon: const Icon(Icons.crop_rotate_rounded, size: 16),
+                                label: Text(
+                                  pendingLogoBytes != null ? 'Change / Re-crop Logo' : 'Upload & Crop Logo',
+                                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  side: const BorderSide(color: Color(0xFF2563EB)),
+                                  foregroundColor: const Color(0xFF2563EB),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              const Text(
+                                'Optional • Printed on all bills for this company',
+                                style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
+
+                    const SizedBox(height: 14),
+
+                    TextField(
+                      controller: nameCtrl,
+                      autofocus: false,
+                      textCapitalization: TextCapitalization.characters,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                      decoration: InputDecoration(
+                        labelText: 'Company / Business Name *',
+                        hintText: 'e.g. BALAJI SEA FOODS',
+                        filled: true,
+                        fillColor: const Color(0xFFF8FAFC),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: phoneCtrl,
+                            keyboardType: TextInputType.phone,
+                            decoration: InputDecoration(
+                              labelText: 'Phone Number',
+                              filled: true,
+                              fillColor: const Color(0xFFF8FAFC),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextField(
+                            controller: cityCtrl,
+                            decoration: InputDecoration(
+                              labelText: 'City',
+                              filled: true,
+                              fillColor: const Color(0xFFF8FAFC),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: gstinCtrl,
+                      textCapitalization: TextCapitalization.characters,
+                      decoration: InputDecoration(
+                        labelText: 'GSTIN (Optional)',
+                        hintText: '37AAAAA0000A1Z5',
+                        filled: true,
+                        fillColor: const Color(0xFFF8FAFC),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: isUploadingLogo
+                            ? null
+                            : () async {
+                                final name = nameCtrl.text.trim();
+                                if (name.isEmpty) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Please enter company name')),
+                                  );
+                                  return;
+                                }
+
+                                setModalState(() => isUploadingLogo = true);
+                                final invP = context.read<InvoiceProvider>();
+                                final busP = Provider.of<BusinessProvider>(context, listen: false);
+
+                                // Upload pending logo if cropped
+                                if (pendingLogoBytes != null) {
+                                  final uploaded = await invP.uploadAttachment(
+                                    pendingLogoBytes!,
+                                    filename: 'company_logo_${DateTime.now().millisecondsSinceEpoch}.png',
+                                  );
+                                  if (uploaded != null) {
+                                    logoUrl = uploaded;
+                                  }
+                                }
+
+                                final newComp = BusinessModel(
+                                  id: 'comp_${DateTime.now().millisecondsSinceEpoch}',
+                                  businessName: name,
+                                  logo: logoUrl,
+                                  phone: phoneCtrl.text.trim(),
+                                  city: cityCtrl.text.trim(),
+                                  gstin: gstinCtrl.text.trim().toUpperCase(),
+                                  syncOn: true,
+                                  lastSaleCreated: '${DateFormat('dd/MM/yyyy').format(DateTime.now())} at ${DateFormat('hh:mm a').format(DateTime.now()).toLowerCase()}',
+                                );
+                                await busP.addCompany(newComp);
+                                if (dialogCtx.mounted) Navigator.pop(dialogCtx);
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Company "$name" created and activated!'),
+                                      backgroundColor: AppColors.success,
+                                    ),
+                                  );
+                                }
+                              },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFDC2626),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                        ),
+                        child: isUploadingLogo
+                            ? const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                                  SizedBox(width: 10),
+                                  Text('Saving Company & Logo...', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+                                ],
+                              )
+                            : const Text('Create & Activate Company', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
