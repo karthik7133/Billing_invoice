@@ -585,15 +585,25 @@ class PdfInvoiceService {
     final dfmt = DateFormat('dd-MM-yyyy');
     final dfmtShort = DateFormat('dd MMM yy');
 
-    double balance = 0.0;
     double totalPurchases = 0.0;
     double totalPaid = 0.0;
+    double totalOverMoney = 0.0;
 
     // Filter invoices within the date range and sort chronologically
+    final fromDay = DateTime(fromDate.year, fromDate.month, fromDate.day);
+    final toDay = DateTime(toDate.year, toDate.month, toDate.day, 23, 59, 59);
+
+    // Calculate opening balance before fromDate
+    double balance = customer.openingBalance;
+    for (final inv in invoices) {
+      if (inv.invoiceDate.isBefore(fromDay)) {
+        balance += (inv.grandTotal - inv.amountPaid);
+      }
+    }
+    final initialOpening = balance;
+
     final filtered = invoices.where((inv) {
       final d = inv.invoiceDate;
-      final fromDay = DateTime(fromDate.year, fromDate.month, fromDate.day);
-      final toDay = DateTime(toDate.year, toDate.month, toDate.day, 23, 59, 59);
       return !d.isBefore(fromDay) && !d.isAfter(toDay);
     }).toList()
       ..sort((a, b) => a.invoiceDate.compareTo(b.invoiceDate));
@@ -650,11 +660,16 @@ class PdfInvoiceService {
                           'GSTIN: ${b.gstin}',
                           style: pw.TextStyle(font: fontRegular, fontSize: 9.5, color: textGray),
                         ),
+                      if (b.address.isNotEmpty)
+                        pw.Text(
+                          'Address: ${b.address}',
+                          style: pw.TextStyle(font: fontRegular, fontSize: 9.5, color: textGray),
+                        ),
                     ],
                   ),
                 ),
 
-                // Right: Crab Logo (Top Right)
+                // Right: Logo
                 pw.Container(
                   width: 65,
                   height: 65,
@@ -806,8 +821,15 @@ class PdfInvoiceService {
                     _stmtCell('Opening Balance', fontBold, isBold: true, font: fontBold),
                     _stmtCell('-', fontRegular),
                     if (showPaymentStatus) _stmtCell('-', fontRegular, align: pw.TextAlign.center),
-                    _stmtCell('0.00', fontRegular, align: pw.TextAlign.right),
-                    _stmtCell('0.00', fontBold, align: pw.TextAlign.right, color: PdfColor.fromHex('#16A34A')),
+                    _stmtCell('-', fontRegular, align: pw.TextAlign.right),
+                    _stmtCell(
+                      initialOpening == 0
+                          ? '0.00'
+                          : '${CurrencyFormatter.format(initialOpening.abs(), showSymbol: false)} ${initialOpening > 0 ? "Dr" : "Cr"}',
+                      fontBold,
+                      align: pw.TextAlign.right,
+                      color: initialOpening > 0 ? PdfColor.fromHex('#DC2626') : PdfColor.fromHex('#16A34A'),
+                    ),
                   ],
                 ),
 
@@ -874,7 +896,14 @@ class PdfInvoiceService {
                             ),
                           ),
                         _stmtCell(CurrencyFormatter.format(inv.grandTotal, showSymbol: false), fontRegular, align: pw.TextAlign.right),
-                        _stmtCell(CurrencyFormatter.format(balance, showSymbol: false), fontBold, align: pw.TextAlign.right, color: balance > 0 ? PdfColor.fromHex('#DC2626') : PdfColor.fromHex('#16A34A')),
+                        _stmtCell(
+                          balance == 0
+                              ? '0.00'
+                              : '${CurrencyFormatter.format(balance.abs(), showSymbol: false)} ${balance > 0 ? "Dr" : "Cr"}',
+                          fontBold,
+                          align: pw.TextAlign.right,
+                          color: balance > 0 ? PdfColor.fromHex('#DC2626') : PdfColor.fromHex('#16A34A'),
+                        ),
                       ],
                     ),
                   );
@@ -883,18 +912,28 @@ class PdfInvoiceService {
                   if (inv.amountPaid > 0) {
                     totalPaid += inv.amountPaid;
                     balance -= inv.amountPaid;
+                    if (inv.overMoneyAmount > 0) totalOverMoney += inv.overMoneyAmount;
+
                     final paymentInfoStr = showPaymentInfo && inv.paymentType.isNotEmpty ? ' (${inv.paymentType})' : '';
+                    final excessNote = inv.overMoneyAmount > 0 ? ' [Over: ₹${CurrencyFormatter.format(inv.overMoneyAmount, showSymbol: false)}]' : '';
 
                     rowsList.add(
                       pw.TableRow(
                         decoration: pw.BoxDecoration(color: PdfColor.fromHex('#F8FAFC')),
                         children: [
                           _stmtCell(dfmtShort.format(inv.invoiceDate), fontRegular),
-                          _stmtCell('Payment Received$paymentInfoStr', fontRegular, color: PdfColor.fromHex('#16A34A')),
+                          _stmtCell('Payment Received$paymentInfoStr$excessNote', fontRegular, color: PdfColor.fromHex('#16A34A')),
                           _stmtCell('#${inv.invoiceNumber}', fontRegular),
                           if (showPaymentStatus) _stmtCell('-', fontRegular, align: pw.TextAlign.center),
                           _stmtCell('-${CurrencyFormatter.format(inv.amountPaid, showSymbol: false)}', fontRegular, align: pw.TextAlign.right, color: PdfColor.fromHex('#16A34A')),
-                          _stmtCell(CurrencyFormatter.format(balance, showSymbol: false), fontBold, align: pw.TextAlign.right, color: balance > 0 ? PdfColor.fromHex('#DC2626') : PdfColor.fromHex('#16A34A')),
+                          _stmtCell(
+                            balance == 0
+                                ? '0.00'
+                                : '${CurrencyFormatter.format(balance.abs(), showSymbol: false)} ${balance > 0 ? "Dr" : "Cr"}',
+                            fontBold,
+                            align: pw.TextAlign.right,
+                            color: balance > 0 ? PdfColor.fromHex('#DC2626') : PdfColor.fromHex('#16A34A'),
+                          ),
                         ],
                       ),
                     );
@@ -965,6 +1004,13 @@ class PdfInvoiceService {
                         fontRegular: fontRegular,
                         fontBold: fontBold,
                       ),
+                      if (totalOverMoney > 0)
+                        _buildSummaryRow(
+                          'Total Over-Payment',
+                          '₹ ${CurrencyFormatter.format(totalOverMoney, showSymbol: false)}',
+                          fontRegular: fontRegular,
+                          fontBold: fontBold,
+                        ),
                       pw.Container(
                         color: brandPurple,
                         padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 6),
@@ -977,7 +1023,9 @@ class PdfInvoiceService {
                               style: pw.TextStyle(font: fontBold, fontSize: 10.5, color: PdfColors.white),
                             ),
                             pw.Text(
-                              '₹ ${CurrencyFormatter.format(balance, showSymbol: false)}',
+                              balance == 0
+                                  ? '₹ 0.00 (Settled)'
+                                  : '₹ ${CurrencyFormatter.format(balance.abs(), showSymbol: false)} ${balance > 0 ? "Dr (Due)" : "Cr (Advance)"}',
                               style: pw.TextStyle(font: fontBold, fontSize: 10.5, color: PdfColors.white),
                             ),
                           ],

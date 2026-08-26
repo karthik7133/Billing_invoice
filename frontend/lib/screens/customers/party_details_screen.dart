@@ -62,10 +62,14 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
           inv.grandTotal.toString().contains(q);
     }).toList();
 
-    final totalReceivable = allPartyInvoices.fold<double>(
-      0.0,
-      (sum, inv) => sum + inv.balanceDue,
-    );
+    // Accurate financial calculation for party
+    final totalBilled = allPartyInvoices.fold<double>(0.0, (sum, inv) => sum + inv.grandTotal);
+    final totalPaid = allPartyInvoices.fold<double>(0.0, (sum, inv) => sum + inv.amountPaid);
+    final totalOverMoney = allPartyInvoices.fold<double>(0.0, (sum, inv) => sum + inv.overMoneyAmount);
+    final netBalance = liveCustomer.openingBalance + totalBilled - totalPaid;
+
+    final isAdvance = netBalance < 0;
+    final isSettled = netBalance == 0;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7FB),
@@ -165,7 +169,10 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
                   offset: const Offset(0, 3),
                 ),
               ],
-              border: Border.all(color: const Color(0xFFE5E7EB)),
+              border: Border.all(
+                color: isAdvance ? const Color(0xFFBBF7D0) : const Color(0xFFE5E7EB),
+                width: isAdvance ? 1.2 : 1.0,
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -210,38 +217,81 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
                         ],
                       ),
                     ),
-                    // Right: Receivable / Balance
+                    // Right: Receivable / Advance / Balance
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(
-                              Icons.arrow_downward_rounded,
+                            Icon(
+                              isAdvance
+                                  ? Icons.arrow_upward_rounded
+                                  : (isSettled ? Icons.check_circle_outline : Icons.arrow_downward_rounded),
                               size: 16,
-                              color: AppColors.receivableGreen,
+                              color: isAdvance
+                                  ? const Color(0xFF16A34A)
+                                  : (isSettled ? const Color(0xFF64748B) : const Color(0xFFDC2626)),
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              'Receivable: ${CurrencyFormatter.format(totalReceivable)}',
-                              style: const TextStyle(
+                              isAdvance
+                                  ? 'Advance: ${CurrencyFormatter.format(netBalance.abs())}'
+                                  : (isSettled
+                                      ? 'Settled: ₹ 0.00'
+                                      : 'Receivable: ${CurrencyFormatter.format(netBalance)}'),
+                              style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w800,
-                                color: AppColors.receivableGreen,
+                                color: isAdvance
+                                    ? const Color(0xFF16A34A)
+                                    : (isSettled ? const Color(0xFF64748B) : const Color(0xFFDC2626)),
                               ),
                             ),
                           ],
                         ),
                         const SizedBox(height: 2),
-                        const Text(
-                          'No Credit Limit Set',
-                          style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+                        Text(
+                          isAdvance
+                              ? 'Party Over-Payment / Advance Credit'
+                              : (isSettled ? 'All dues settled' : "You'll Get from Party"),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isAdvance ? const Color(0xFF16A34A) : const Color(0xFF94A3B8),
+                            fontWeight: isAdvance ? FontWeight.w600 : FontWeight.normal,
+                          ),
                         ),
                       ],
                     ),
                   ],
                 ),
+
+                if (totalOverMoney > 0) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFAF5FF),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFE9D5FF)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.auto_awesome_rounded, size: 14, color: Color(0xFF7C3AED)),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Total Over-Payment on bills: ${CurrencyFormatter.format(totalOverMoney)}',
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF7C3AED),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
                 const SizedBox(height: 14),
                 const Divider(height: 1, color: Color(0xFFF1F5F9)),
                 const SizedBox(height: 12),
@@ -252,16 +302,18 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
                       child: OutlinedButton.icon(
                         onPressed: () {
                           HapticFeedback.lightImpact();
+                          final msg = isAdvance
+                              ? 'Dear ${liveCustomer.name},\nYou have an advance credit of ${CurrencyFormatter.format(netBalance.abs())} with our business.\nThank you!'
+                              : 'Dear ${liveCustomer.name},\nYour outstanding balance with our business is ${CurrencyFormatter.format(netBalance)}. Please make the payment at your earliest convenience.\nThank you!';
                           ShareService.shareText(
-                            text:
-                                'Dear ${liveCustomer.name},\nYour outstanding balance with our business is ${CurrencyFormatter.format(totalReceivable)}. Please make the payment at your earliest convenience.\nThank you!',
-                            subject: 'Payment Reminder - Outstanding Balance',
+                            text: msg,
+                            subject: 'Account Statement - Balance Update',
                           );
                         },
                         icon: const Icon(Icons.notifications_none_rounded, size: 16, color: Color(0xFF2563EB)),
-                        label: const Text(
-                          'Send Reminder',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF2563EB)),
+                        label: Text(
+                          isAdvance ? 'Send Credit Note' : 'Send Reminder',
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF2563EB)),
                         ),
                         style: OutlinedButton.styleFrom(
                           side: const BorderSide(color: Color(0xFFBFDBFE), width: 1.2),
@@ -562,6 +614,7 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
   ) {
     final isPaid = invoice.isPaid;
     final dateStr = DateFormat('dd MMM, yy').format(invoice.invoiceDate);
+    final hasOver = invoice.hasOverMoney;
 
     return InkWell(
       onTap: () {
@@ -575,7 +628,7 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
+          border: Border.all(color: hasOver ? const Color(0xFFD8B4FE) : const Color(0xFFE2E8F0)),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.02),
@@ -590,29 +643,50 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 // Type & Badge — "Purchase" from customer's perspective
-                Row(
-                  children: [
-                    const Text(
-                      'Purchase',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: isPaid ? const Color(0xFFE6F7F0) : const Color(0xFFFEF3C7),
-                        borderRadius: BorderRadius.circular(4),
+                Expanded(
+                  child: Row(
+                    children: [
+                      const Text(
+                        'Purchase',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
                       ),
-                      child: Text(
-                        isPaid ? 'PAID' : 'UNPAID',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          color: isPaid ? AppColors.receivableGreen : const Color(0xFFB45309),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: isPaid ? const Color(0xFFE6F7F0) : const Color(0xFFFEF3C7),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          isPaid ? 'PAID' : 'UNPAID',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            color: isPaid ? AppColors.receivableGreen : const Color(0xFFB45309),
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                      if (hasOver) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF3E8FF),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: const Color(0xFFD8B4FE), width: 0.8),
+                          ),
+                          child: Text(
+                            'OVER: ${CurrencyFormatter.format(invoice.overMoneyAmount)}',
+                            style: const TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF7C3AED),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
                 // Invoice No & Date
                 Column(
@@ -634,21 +708,35 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                // Total & Balance
+                // Total, Paid & Balance
                 Row(
                   children: [
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Total', style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
+                        const Text('Bill Total', style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
                         const SizedBox(height: 2),
                         Text(
                           CurrencyFormatter.format(invoice.grandTotal),
-                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
+                          style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
                         ),
                       ],
                     ),
-                    const SizedBox(width: 24),
+                    if (invoice.amountPaid > 0) ...[
+                      const SizedBox(width: 16),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Paid', style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
+                          const SizedBox(height: 2),
+                          Text(
+                            CurrencyFormatter.format(invoice.amountPaid),
+                            style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: Color(0xFF16A34A)),
+                          ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(width: 16),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -657,7 +745,7 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
                         Text(
                           CurrencyFormatter.format(invoice.balanceDue),
                           style: TextStyle(
-                            fontSize: 14,
+                            fontSize: 13.5,
                             fontWeight: FontWeight.w800,
                             color: invoice.balanceDue > 0 ? const Color(0xFFEF4444) : const Color(0xFF1E293B),
                           ),
@@ -832,10 +920,15 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
             onPressed: () {
               final val = double.tryParse(amountController.text.trim());
               if (val != null && val > 0) {
-                final unpaidInvoices = invoiceProvider
+                final allCustInvoices = invoiceProvider
                     .getInvoicesForCustomer(customer.id)
+                    .toList()
+                  ..sort((a, b) => a.invoiceDate.compareTo(b.invoiceDate));
+
+                final unpaidInvoices = allCustInvoices
                     .where((inv) => inv.balanceDue > 0)
                     .toList();
+
                 double remaining = val;
                 for (final inv in unpaidInvoices) {
                   if (remaining <= 0) break;
@@ -843,6 +936,13 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
                   invoiceProvider.updatePayment(inv.id, inv.amountPaid + payForThis);
                   remaining -= payForThis;
                 }
+
+                // If customer paid excess over all unpaid invoices, apply excess to latest invoice
+                if (remaining > 0 && allCustInvoices.isNotEmpty) {
+                  final latestInv = allCustInvoices.last;
+                  invoiceProvider.updatePayment(latestInv.id, latestInv.amountPaid + remaining);
+                }
+
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(

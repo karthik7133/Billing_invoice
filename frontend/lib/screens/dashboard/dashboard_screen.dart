@@ -600,16 +600,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
       itemBuilder: (ctx, index) {
         final party = parties[index];
         final partyInvoices = invoiceProvider.getInvoicesForCustomer(party.id);
-        final calculatedBalance = partyInvoices.fold<double>(
-          party.openingBalance,
-          (sum, inv) => sum + inv.balanceDue,
-        );
+        final totalBilled = partyInvoices.fold<double>(0.0, (sum, inv) => sum + inv.grandTotal);
+        final totalPaid = partyInvoices.fold<double>(0.0, (sum, inv) => sum + inv.amountPaid);
+        final calculatedBalance = party.openingBalance + totalBilled - totalPaid;
 
         final dateText = party.lastTransactionDate != null
             ? DateFormat('dd MMM, yy').format(party.lastTransactionDate!)
             : 'No transactions';
 
-        final isReceivable = calculatedBalance >= 0;
+        final isReceivable = calculatedBalance > 0;
         final balanceAbs = calculatedBalance.abs();
 
         return InkWell(
