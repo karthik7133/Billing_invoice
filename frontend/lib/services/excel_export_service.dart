@@ -738,7 +738,7 @@ class ExcelExportService {
     // ── Styles matching ex.xlsx ───────────────────────────────────────────────
     final headerLeftStyle = CellStyle(
       bold: true,
-      fontSize: 10,
+      fontSize: 11,
       fontColorHex: ExcelColor.fromHexString('#000000'),
       horizontalAlign: HorizontalAlign.Left,
       verticalAlign: VerticalAlign.Center,
@@ -746,7 +746,7 @@ class ExcelExportService {
 
     final headerRightStyle = CellStyle(
       bold: true,
-      fontSize: 10,
+      fontSize: 11,
       fontColorHex: ExcelColor.fromHexString('#000000'),
       horizontalAlign: HorizontalAlign.Right,
       verticalAlign: VerticalAlign.Center,
@@ -754,19 +754,19 @@ class ExcelExportService {
 
     // Debit rows (Sale / Purchase / Exp) in Blue (#0000FF)
     final debitDateStyle = CellStyle(
-      fontSize: 10,
+      fontSize: 11,
       fontColorHex: ExcelColor.fromHexString('#0000FF'),
       horizontalAlign: HorizontalAlign.Left,
       verticalAlign: VerticalAlign.Center,
     );
     final debitDescStyle = CellStyle(
-      fontSize: 10,
+      fontSize: 11,
       fontColorHex: ExcelColor.fromHexString('#0000FF'),
       horizontalAlign: HorizontalAlign.Left,
       verticalAlign: VerticalAlign.Center,
     );
     final debitAmountStyle = CellStyle(
-      fontSize: 10,
+      fontSize: 11,
       fontColorHex: ExcelColor.fromHexString('#0000FF'),
       horizontalAlign: HorizontalAlign.Right,
       verticalAlign: VerticalAlign.Center,
@@ -774,19 +774,19 @@ class ExcelExportService {
 
     // Credit rows (Payment received) in Red (#FF0000)
     final creditDateStyle = CellStyle(
-      fontSize: 10,
+      fontSize: 11,
       fontColorHex: ExcelColor.fromHexString('#FF0000'),
       horizontalAlign: HorizontalAlign.Left,
       verticalAlign: VerticalAlign.Center,
     );
     final creditDescStyle = CellStyle(
-      fontSize: 10,
+      fontSize: 11,
       fontColorHex: ExcelColor.fromHexString('#FF0000'),
       horizontalAlign: HorizontalAlign.Left,
       verticalAlign: VerticalAlign.Center,
     );
     final creditAmountStyle = CellStyle(
-      fontSize: 10,
+      fontSize: 11,
       fontColorHex: ExcelColor.fromHexString('#FF0000'),
       horizontalAlign: HorizontalAlign.Right,
       verticalAlign: VerticalAlign.Center,
@@ -795,14 +795,14 @@ class ExcelExportService {
     // Totals: Bold Red Credit, Bold Blue Debit
     final boldCreditTotalStyle = CellStyle(
       bold: true,
-      fontSize: 10,
+      fontSize: 11,
       fontColorHex: ExcelColor.fromHexString('#FF0000'),
       horizontalAlign: HorizontalAlign.Right,
       verticalAlign: VerticalAlign.Center,
     );
     final boldDebitTotalStyle = CellStyle(
       bold: true,
-      fontSize: 10,
+      fontSize: 11,
       fontColorHex: ExcelColor.fromHexString('#0000FF'),
       horizontalAlign: HorizontalAlign.Right,
       verticalAlign: VerticalAlign.Center,
@@ -811,14 +811,14 @@ class ExcelExportService {
     // Settlement Banner: Bold Center Black
     final settlementStyle = CellStyle(
       bold: true,
-      fontSize: 10,
+      fontSize: 11,
       fontColorHex: ExcelColor.fromHexString('#000000'),
       horizontalAlign: HorizontalAlign.Center,
       verticalAlign: VerticalAlign.Center,
     );
 
     final blankStyle = CellStyle(
-      fontSize: 10,
+      fontSize: 11,
       horizontalAlign: HorizontalAlign.Center,
       verticalAlign: VerticalAlign.Center,
     );
@@ -992,29 +992,7 @@ class ExcelExportService {
           ],
         );
 
-        if (totalDebit <= totalCredit && totalDebit > 0) {
-          final sRow = row;
-          writeRow(
-            [
-              TextCellValue('SETTLEMENT '),
-              TextCellValue(''),
-              TextCellValue(''),
-              TextCellValue(''),
-            ],
-            [
-              settlementStyle,
-              settlementStyle,
-              settlementStyle,
-              settlementStyle,
-            ],
-          );
-          try {
-            sheet.merge(
-              CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: sRow),
-              CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: sRow),
-            );
-          } catch (_) {}
-        } else if (totalDebit > totalCredit) {
+        if (totalDebit > totalCredit) {
           final diff = totalDebit - totalCredit;
           writeRow(
             [
@@ -1030,6 +1008,12 @@ class ExcelExportService {
               boldDebitTotalStyle,
             ],
           );
+        } else if (totalDebit <= totalCredit && totalDebit > 0) {
+          // All settled — show a final SETTLEMENT banner only if not already shown per-invoice
+          final allSettled = periodInvoices.every((inv) => inv.balanceDue <= 0);
+          if (!allSettled) {
+            // Partially settled across invoices — no redundant SETTLEMENT banner
+          }
         }
       } else if (periodInvoices.length == 1 && periodInvoices.first.balanceDue > 0) {
         // Single invoice with balance pending
@@ -1050,11 +1034,11 @@ class ExcelExportService {
       }
     }
 
-    // ── 3. Set Column Widths matching ex.xlsx ─────────────────────────────────
-    sheet.setColumnWidth(0, 14.0); // DATE
-    sheet.setColumnWidth(1, 32.0); // DESCRIPTION
-    sheet.setColumnWidth(2, 16.0); // CREDIT
-    sheet.setColumnWidth(3, 16.0); // DEBIT
+    // ── 3. Set Column Widths for readability in Excel without zooming ──────────
+    sheet.setColumnWidth(0, 16.0); // DATE — wider for readability
+    sheet.setColumnWidth(1, 42.0); // DESCRIPTION — much wider for full text
+    sheet.setColumnWidth(2, 18.0); // CREDIT — wider numbers
+    sheet.setColumnWidth(3, 18.0); // DEBIT — wider numbers
 
     final fileBytes = excel.save();
     return Uint8List.fromList(fileBytes ?? []);

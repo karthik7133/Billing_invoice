@@ -22,10 +22,15 @@ class _ProductListScreenState extends State<ProductListScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
       final invoiceProvider = Provider.of<InvoiceProvider>(context, listen: false);
-      Provider.of<ProductProvider>(context, listen: false)
-          .syncItemsFromInvoices(invoiceProvider.allInvoices);
+      final productProvider = Provider.of<ProductProvider>(context, listen: false);
+      // Fetch from server first, then sync any invoice items that aren't catalogued yet
+      await productProvider.fetchProducts();
+      if (mounted) {
+        await productProvider.syncItemsFromInvoices(invoiceProvider.allInvoices);
+      }
     });
   }
 
