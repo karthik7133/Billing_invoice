@@ -321,9 +321,20 @@ class InvoiceProvider with ChangeNotifier {
 
       if (res.success && res.data != null && res.data['invoice'] != null) {
         finalInvoice = InvoiceModel.fromJson(res.data['invoice'] as Map<String, dynamic>);
+      } else if (res.statusCode == 409) {
+        // Duplicate invoice number for this customer — surface to UI
+        _isLoading = false;
+        notifyListeners();
+        final errMsg = res.message ?? 'Duplicate invoice number for this customer.';
+        throw Exception(errMsg);
       }
     } catch (e) {
       debugPrint('[InvoiceProvider] createInvoice error: $e');
+      if (e is Exception && e.toString().contains('Duplicate')) {
+        _isLoading = false;
+        notifyListeners();
+        rethrow;
+      }
     }
 
     _invoices.insert(0, finalInvoice);

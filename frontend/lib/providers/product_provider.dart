@@ -32,13 +32,79 @@ class ProductProvider with ChangeNotifier {
 
   List<ProductModel> get products {
     if (_searchQuery.isEmpty) return _products;
-    return _products.where((p) {
-      final name = p.name.toLowerCase();
-      final hsn = p.hsnSac.toLowerCase();
-      final desc = p.description.toLowerCase();
-      final q = _searchQuery.toLowerCase();
-      return name.contains(q) || hsn.contains(q) || desc.contains(q);
-    }).toList();
+    final q = _searchQuery.toLowerCase();
+    return _products.where((p) => p.name.toLowerCase().contains(q)).toList();
+  }
+
+  /// Adds or updates an item in the catalog (called automatically when adding items in invoices)
+  Future<ProductModel?> addOrUpdateItem({
+    required String name,
+    required double price,
+    required String unit,
+  }) async {
+    final cleanName = name.trim();
+    if (cleanName.isEmpty) return null;
+
+    final existingIndex = _products.indexWhere(
+      (p) => p.name.trim().toLowerCase() == cleanName.toLowerCase(),
+    );
+
+    if (existingIndex != -1) {
+      final existing = _products[existingIndex];
+      final updated = existing.copyWith(
+        price: price > 0 ? price : existing.price,
+        unit: unit.isNotEmpty ? unit : existing.unit,
+      );
+      await updateProduct(updated);
+      return updated;
+    } else {
+      final newProd = ProductModel(
+        id: _uuid.v4(),
+        name: cleanName,
+        price: price,
+        unit: unit.isNotEmpty ? unit : 'Kg',
+        gstRate: 0.0,
+      );
+      return await addProduct(newProd);
+    }
+  }
+
+  /// Syncs/seeds products from existing invoices so that all items previously added
+  /// are preserved in the catalog.
+  Future<void> syncItemsFromInvoices(List<dynamic> invoices) async {
+    await _initFromCache();
+    bool hasChanges = false;
+    for (final inv in invoices) {
+      final items = (inv as dynamic).items as List<dynamic>?;
+      if (items == null) continue;
+      for (final it in items) {
+        final itName = (it.name as String?)?.trim() ?? '';
+        if (itName.isEmpty) continue;
+        final itRate = (it.rate as num?)?.toDouble() ?? 0.0;
+        final itUnit = (it.unit as String?)?.trim() ?? 'Kg';
+
+        final existing = _products.any(
+          (p) => p.name.trim().toLowerCase() == itName.toLowerCase(),
+        );
+
+        if (!existing) {
+          final newProd = ProductModel(
+            id: _uuid.v4(),
+            name: itName,
+            price: itRate,
+            unit: itUnit.isNotEmpty ? itUnit : 'Kg',
+            gstRate: 0.0,
+          );
+          _products.add(newProd);
+          hasChanges = true;
+        }
+      }
+    }
+
+    if (hasChanges) {
+      await _cache.saveProducts(_products);
+      notifyListeners();
+    }
   }
 
   bool get isLoading => _isLoading;

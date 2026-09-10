@@ -1,0 +1,6 @@
+# Exported sample artifacts
+*.pdf
+
+# OS files
+.DS_Store
+Thumbs.db

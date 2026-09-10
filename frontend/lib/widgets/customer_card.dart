@@ -152,12 +152,16 @@ class CustomerCard extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(
-                    CurrencyFormatter.format(balanceAbs),
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      color: isReceivable ? AppColors.receivableGreen : AppColors.payableRed,
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      CurrencyFormatter.format(balanceAbs),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: isReceivable ? AppColors.receivableGreen : AppColors.payableRed,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 2),

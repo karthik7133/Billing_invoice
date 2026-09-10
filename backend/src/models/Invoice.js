@@ -249,7 +249,8 @@ const InvoiceSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Compound index for invoice number per user
-InvoiceSchema.index({ userId: 1, invoiceNumber: 1 });
+// Invoice number must be unique per customer (party), not globally
+// Same number is allowed for different customers
+InvoiceSchema.index({ userId: 1, customerId: 1, invoiceNumber: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model('Invoice', InvoiceSchema);

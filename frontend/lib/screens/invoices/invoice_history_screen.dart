@@ -9,6 +9,7 @@ import '../../widgets/cloud_server_status_pill.dart';
 import 'create_invoice_screen.dart';
 import 'invoice_detail_screen.dart';
 import 'invoice_pdf_preview_screen.dart';
+import '../ledger/ledger_screen.dart';
 
 class InvoiceHistoryScreen extends StatefulWidget {
   const InvoiceHistoryScreen({super.key});
@@ -54,6 +55,15 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.menu_book_rounded, color: Color(0xFF2563EB)),
+            tooltip: 'Date-Wise Ledger & Daybook',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const LedgerScreen()),
+              );
+            },
+          ),
           const CloudServerStatusPill(compact: true),
           IconButton(
             icon: const Icon(Icons.add, color: Color(0xFF2563EB)),
@@ -166,11 +176,11 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _buildSummaryStat('Total Sales', CurrencyFormatter.format(filteredTotal), const Color(0xFF0F172A)),
+                Expanded(child: _buildSummaryStat('Total Sales', CurrencyFormatter.format(filteredTotal), const Color(0xFF0F172A))),
                 Container(height: 24, width: 1, color: const Color(0xFFE2E8F0)),
-                _buildSummaryStat('Total Paid', CurrencyFormatter.format(filteredPaid), AppColors.receivableGreen),
+                Expanded(child: _buildSummaryStat('Total Paid', CurrencyFormatter.format(filteredPaid), AppColors.receivableGreen)),
                 Container(height: 24, width: 1, color: const Color(0xFFE2E8F0)),
-                _buildSummaryStat('Total Due', CurrencyFormatter.format(filteredDue), AppColors.payableRed),
+                Expanded(child: _buildSummaryStat('Total Due', CurrencyFormatter.format(filteredDue), AppColors.payableRed)),
               ],
             ),
           ),
@@ -263,11 +273,14 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
   Widget _buildSummaryStat(String label, String value, Color color) {
     return Column(
       children: [
-        Text(label, style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+        Text(label, style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B), fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
         const SizedBox(height: 2),
-        Text(
-          value,
-          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: color),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            value,
+            style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: color),
+          ),
         ),
       ],
     );

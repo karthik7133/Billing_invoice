@@ -8,9 +8,12 @@ import '../../models/customer_model.dart';
 import '../../models/invoice_model.dart';
 import '../../providers/invoice_provider.dart';
 import '../../providers/business_provider.dart';
+import '../../providers/customer_provider.dart';
 import '../../services/pdf_invoice_service.dart';
 import '../../services/share_service.dart';
 import '../../widgets/pdf_display_options_sheet.dart';
+import '../../widgets/pdf_progress_dialog.dart';
+import '../../widgets/xls_export_options_sheet.dart';
 import '../invoices/invoice_detail_screen.dart';
 
 class PartyStatementScreen extends StatefulWidget {
@@ -219,6 +222,7 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
         });
 
         final messenger = ScaffoldMessenger.of(context);
+        PdfProgressDialog.show(context, message: 'Preparing Statement PDF...');
         try {
           final bytes = await PdfInvoiceService.generatePartyStatementPdf(
             customer: widget.customer,
@@ -231,9 +235,12 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
             showPaymentStatus: showPaymentStatus,
             showPaymentInfo: showPaymentInfo,
           );
+          PdfProgressDialog.hide();
+          await Future.delayed(const Duration(milliseconds: 100));
           final finalName = fileName.endsWith('.pdf') ? fileName : '$fileName.pdf';
           await ShareService.sharePdf(bytes, filename: finalName);
         } catch (e) {
+          PdfProgressDialog.hide();
           messenger.showSnackBar(
             SnackBar(
               content: Text('Error generating PDF: $e'),
@@ -245,32 +252,19 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
     );
   }
 
-  void _shareAsXls(List<InvoiceModel> allInvoices, List<_StatementRow> rows, double closingBalance) {
+  void _shareAsXls(List<InvoiceModel> allInvoices) {
     HapticFeedback.lightImpact();
-    final buf = StringBuffer();
-    buf.writeln('PARTY STATEMENT');
-    buf.writeln('Party Name: ${widget.customer.name}');
-    if (widget.customer.phone.isNotEmpty) buf.writeln('Phone: ${widget.customer.phone}');
-    buf.writeln('Period: ${DateFormat('dd/MM/yyyy').format(_fromDate)} to ${DateFormat('dd/MM/yyyy').format(_toDate)}');
-    buf.writeln('');
-    buf.writeln('Date,Transaction Type,Ref / Bill No.,Bill Amount (₹),Received Amount (₹),Over Amount (₹),Running Balance (₹)');
+    final businessProvider = Provider.of<BusinessProvider>(context, listen: false);
+    final customerProvider = Provider.of<CustomerProvider>(context, listen: false);
 
-    for (final r in rows) {
-      final dStr = DateFormat('dd/MM/yyyy').format(r.date);
-      final bAmt = r.billAmount != null ? r.billAmount!.toStringAsFixed(2) : '';
-      final rAmt = r.receivedAmount != null ? r.receivedAmount!.toStringAsFixed(2) : '';
-      final oAmt = r.overAmount != null ? r.overAmount!.toStringAsFixed(2) : '';
-      final balStr = '${r.balance.abs().toStringAsFixed(2)} ${r.balance > 0 ? "Dr" : (r.balance < 0 ? "Cr" : "")}';
-
-      buf.writeln('$dStr,${r.type},${r.refNo},$bAmt,$rAmt,$oAmt,$balStr');
-    }
-
-    buf.writeln('');
-    buf.writeln('Closing Balance,,,${closingBalance.abs().toStringAsFixed(2)} ${closingBalance > 0 ? "Dr (Receivable)" : (closingBalance < 0 ? "Cr (Advance)" : "Settled")}');
-
-    ShareService.shareText(
-      text: buf.toString(),
-      subject: 'Party Statement - ${widget.customer.name}',
+    XlsExportOptionsSheet.show(
+      context,
+      allInvoices: allInvoices,
+      customers: customerProvider.customers,
+      business: businessProvider.business,
+      currentFromDate: _fromDate,
+      currentToDate: _toDate,
+      preselectedParty: widget.customer,
     );
   }
 
@@ -336,7 +330,7 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
           _AppBarIconBtn(
             color: const Color(0xFF16A34A),
             label: 'XLS',
-            onTap: () => _shareAsXls(allParty, rows, closingBalance),
+            onTap: () => _shareAsXls(allParty),
           ),
           const SizedBox(width: 10),
         ],
@@ -466,33 +460,42 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            isAdvance
-                                ? 'Closing Balance (Advance / Over-Paid)'
-                                : (isReceivable ? 'Closing Balance (Due / Receivable)' : 'Closing Balance (Settled)'),
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: isAdvance ? const Color(0xFF16A34A) : const Color(0xFF64748B),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              isAdvance
+                                  ? 'Closing Balance (Advance / Over-Paid)'
+                                  : (isReceivable ? 'Closing Balance (Due / Receivable)' : 'Closing Balance (Settled)'),
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: isAdvance ? const Color(0xFF16A34A) : const Color(0xFF64748B),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            CurrencyFormatter.format(closingBalance.abs()),
-                            style: TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: -0.5,
-                              color: isAdvance
-                                  ? const Color(0xFF16A34A)
-                                  : (isSettled ? const Color(0xFF16A34A) : const Color(0xFFDC2626)),
+                            const SizedBox(height: 2),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                CurrencyFormatter.format(closingBalance.abs()),
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: -0.5,
+                                  color: isAdvance
+                                      ? const Color(0xFF16A34A)
+                                      : (isSettled ? const Color(0xFF16A34A) : const Color(0xFFDC2626)),
+                                ),
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
+                      const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
@@ -651,12 +654,35 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
   // ─── Multi-Column Horizontally Scrollable Ledger Table ──────────────────────
 
   Widget _buildHorizontalScrollableTable(List<_StatementRow> rows) {
-    const tableWidth = 920.0;
+    // Dynamically calculate Ref # column width based on the longest reference string
+    int maxRefLength = 0;
+    for (final r in rows) {
+      if (r.refNo.length > maxRefLength) {
+        maxRefLength = r.refNo.length;
+      }
+    }
+    // Dynamic width based on text length: between 72 and 110
+    final double refColWidth = (maxRefLength * 8.0 + 24).clamp(72.0, 110.0);
+
+    const double dateColWidth = 80.0;
+    const double txnColWidth = 80.0;
+    const double billAmtColWidth = 96.0;
+    const double receivedColWidth = 96.0;
+    const double overAmtColWidth = 84.0;
+    const double balanceColWidth = 110.0;
+
+    final double totalTableWidth = dateColWidth +
+        txnColWidth +
+        refColWidth +
+        billAmtColWidth +
+        receivedColWidth +
+        overAmtColWidth +
+        balanceColWidth;
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: SizedBox(
-        width: tableWidth,
+        width: totalTableWidth + 60, // Ample space for 24px margins, 24px padding, and 2px borders with buffer
         child: Column(
           children: [
             // Table Header Bar
@@ -667,15 +693,15 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
                 color: Color(0xFF2563EB),
                 borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
               ),
-              child: const Row(
+              child: Row(
                 children: [
-                  SizedBox(width: 90, child: Text('DATE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white))),
-                  SizedBox(width: 110, child: Text('TXN TYPE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white))),
-                  SizedBox(width: 120, child: Text('BILL / REF #', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white))),
-                  SizedBox(width: 130, child: Text('BILL AMT (₹)', textAlign: TextAlign.right, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white))),
-                  SizedBox(width: 130, child: Text('RECEIVED (₹)', textAlign: TextAlign.right, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white))),
-                  SizedBox(width: 130, child: Text('OVER AMT (₹)', textAlign: TextAlign.right, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white))),
-                  SizedBox(width: 150, child: Text('BALANCE (₹)', textAlign: TextAlign.right, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white))),
+                  const SizedBox(width: dateColWidth, child: Text('DATE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white))),
+                  const SizedBox(width: txnColWidth, child: Text('TXN TYPE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white))),
+                  SizedBox(width: refColWidth, child: const Text('BILL / REF #', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white))),
+                  const SizedBox(width: billAmtColWidth, child: Text('BILL AMT (₹)', textAlign: TextAlign.right, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white))),
+                  const SizedBox(width: receivedColWidth, child: Text('RECEIVED (₹)', textAlign: TextAlign.right, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white))),
+                  const SizedBox(width: overAmtColWidth, child: Text('OVER AMT (₹)', textAlign: TextAlign.right, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white))),
+                  const SizedBox(width: balanceColWidth, child: Text('BALANCE (₹)', textAlign: TextAlign.right, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white))),
                 ],
               ),
             ),
@@ -724,7 +750,7 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
                         children: [
                           // 1. Date
                           SizedBox(
-                            width: 90,
+                            width: dateColWidth,
                             child: Text(
                               dateStr,
                               style: TextStyle(
@@ -738,7 +764,7 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
 
                           // 2. Txn Type
                           SizedBox(
-                            width: 110,
+                            width: txnColWidth,
                             child: Row(
                               children: [
                                 Container(
@@ -768,7 +794,7 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
 
                           // 3. Bill / Ref #
                           SizedBox(
-                            width: 120,
+                            width: refColWidth,
                             child: Text(
                               row.refNo,
                               style: TextStyle(
@@ -783,7 +809,7 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
 
                           // 4. Bill Amount (Debit)
                           SizedBox(
-                            width: 130,
+                            width: billAmtColWidth,
                             child: FittedBox(
                               fit: BoxFit.scaleDown,
                               alignment: Alignment.centerRight,
@@ -803,7 +829,7 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
 
                           // 5. Received Amount (Credit)
                           SizedBox(
-                            width: 130,
+                            width: receivedColWidth,
                             child: FittedBox(
                               fit: BoxFit.scaleDown,
                               alignment: Alignment.centerRight,
@@ -823,23 +849,26 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
 
                           // 6. Over Amount (Excess Paid on this bill)
                           SizedBox(
-                            width: 130,
+                            width: overAmtColWidth,
                             child: row.overAmount != null && row.overAmount! > 0
                                 ? Align(
                                     alignment: Alignment.centerRight,
                                     child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
                                       decoration: BoxDecoration(
                                         color: const Color(0xFFF3E8FF),
                                         borderRadius: BorderRadius.circular(6),
                                         border: Border.all(color: const Color(0xFFD8B4FE), width: 0.8),
                                       ),
-                                      child: Text(
-                                        '+₹${row.overAmount!.toStringAsFixed(2)}',
-                                        style: const TextStyle(
-                                          fontSize: 10.5,
-                                          fontWeight: FontWeight.w800,
-                                          color: Color(0xFF7C3AED),
+                                      child: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: Text(
+                                          '+₹${row.overAmount!.toStringAsFixed(2)}',
+                                          style: const TextStyle(
+                                            fontSize: 10.5,
+                                            fontWeight: FontWeight.w800,
+                                            color: Color(0xFF7C3AED),
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -853,7 +882,7 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
 
                           // 7. Running Balance (with Dr/Cr tag)
                           SizedBox(
-                            width: 150,
+                            width: balanceColWidth,
                             child: FittedBox(
                               fit: BoxFit.scaleDown,
                               alignment: Alignment.centerRight,
@@ -1069,36 +1098,39 @@ class _PartyStatementScreenState extends State<PartyStatementScreen> {
   void _showRangeSheet() {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(color: const Color(0xFFE2E8F0), borderRadius: BorderRadius.circular(2)),
-              ),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                child: Text('Select Period', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1E293B))),
-              ),
-              ..._rangeOptions.map(
-                (opt) => ListTile(
-                  title: Text(opt, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                  trailing: _selectedRange == opt
-                      ? const Icon(Icons.check_circle_rounded, color: Color(0xFF2563EB))
-                      : null,
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _applyRange(opt);
-                  },
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(color: const Color(0xFFE2E8F0), borderRadius: BorderRadius.circular(2)),
                 ),
-              ),
-            ],
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  child: Text('Select Period', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1E293B))),
+                ),
+                ..._rangeOptions.map(
+                  (opt) => ListTile(
+                    title: Text(opt, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                    trailing: _selectedRange == opt
+                        ? const Icon(Icons.check_circle_rounded, color: Color(0xFF2563EB))
+                        : null,
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _applyRange(opt);
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

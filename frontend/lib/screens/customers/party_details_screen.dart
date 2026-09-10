@@ -18,6 +18,7 @@ import '../invoices/invoice_detail_screen.dart';
 import '../invoices/invoice_pdf_preview_screen.dart';
 import 'add_edit_customer_screen.dart';
 import 'party_statement_screen.dart';
+import '../ledger/ledger_screen.dart';
 
 class PartyDetailsScreen extends StatefulWidget {
   final CustomerModel customer;
@@ -114,14 +115,30 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
                     builder: (_) => PartyStatementScreen(customer: liveCustomer),
                   ),
                 );
+              } else if (val == 'party_ledger') {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => LedgerScreen(initialParty: liveCustomer),
+                  ),
+                );
               }
             },
             itemBuilder: (_) => [
               const PopupMenuItem(
+                value: 'party_ledger',
+                child: Row(
+                  children: [
+                    Icon(Icons.menu_book_rounded, color: Color(0xFF2563EB), size: 20),
+                    SizedBox(width: 10),
+                    Text('Date-Wise Party Ledger', style: TextStyle(fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
                 value: 'party_statement',
                 child: Row(
                   children: [
-                    Icon(Icons.receipt_long_outlined, color: Color(0xFF2563EB), size: 20),
+                    Icon(Icons.receipt_long_outlined, color: Color(0xFF7C3AED), size: 20),
                     SizedBox(width: 10),
                     Text('Party Statement', style: TextStyle(fontWeight: FontWeight.w600)),
                   ],
@@ -561,71 +578,74 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
     HapticFeedback.lightImpact();
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       backgroundColor: Colors.white,
       builder: (ctx) => SafeArea(
         top: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Handle
-              Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE2E8F0),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Add Transaction',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Handle
+                Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE2E8F0),
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              _ActionTile(
-                icon: Icons.receipt_outlined,
-                iconBg: const Color(0xFFEFF6FF),
-                iconColor: const Color(0xFF2563EB),
-                title: 'Sale Invoice',
-                subtitle: 'Create a new sale invoice for this party',
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => CreateInvoiceScreen(preselectedCustomer: customer),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Add Transaction',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
                     ),
-                  );
-                },
-              ),
-              _ActionTile(
-                icon: Icons.shopping_cart_outlined,
-                iconBg: const Color(0xFFFFF7ED),
-                iconColor: const Color(0xFFEA580C),
-                title: 'Purchase Transaction',
-                subtitle: 'Record a purchase from this party',
-                onTap: () {
-                  Navigator.pop(ctx);
-                  // Purchase transaction — for now navigates to invoice with a note
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => CreateInvoiceScreen(preselectedCustomer: customer),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 8),
-            ],
+                  ),
+                ),
+                const SizedBox(height: 4),
+                _ActionTile(
+                  icon: Icons.receipt_outlined,
+                  iconBg: const Color(0xFFEFF6FF),
+                  iconColor: const Color(0xFF2563EB),
+                  title: 'Sale Invoice',
+                  subtitle: 'Create a new sale invoice for this party',
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => CreateInvoiceScreen(preselectedCustomer: customer),
+                      ),
+                    );
+                  },
+                ),
+                _ActionTile(
+                  icon: Icons.shopping_cart_outlined,
+                  iconBg: const Color(0xFFFFF7ED),
+                  iconColor: const Color(0xFFEA580C),
+                  title: 'Purchase Transaction',
+                  subtitle: 'Record a purchase from this party',
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    // Purchase transaction — for now navigates to invoice with a note
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => CreateInvoiceScreen(preselectedCustomer: customer),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
           ),
         ),
       ),
@@ -851,8 +871,10 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
                     PdfProgressDialog.show(context, message: 'Preparing Invoice PDF...');
                     try {
                       final bytes = await PdfInvoiceService.generateTaxInvoicePdf(invoice);
+                      PdfProgressDialog.hide();
+                      await Future.delayed(const Duration(milliseconds: 100));
                       await ShareService.sharePdf(bytes, filename: 'Invoice_${invoice.invoiceNumber}.pdf');
-                    } finally {
+                    } catch (_) {
                       PdfProgressDialog.hide();
                     }
                   },
@@ -941,6 +963,7 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
         required bool showPaymentInfo,
       }) async {
         final messenger = ScaffoldMessenger.of(context);
+        PdfProgressDialog.show(context, message: 'Preparing Statement PDF...');
         try {
           final fromDate = DateTime(now.year, now.month, 1);
           final toDate = now;
@@ -955,9 +978,12 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
             showPaymentStatus: showPaymentStatus,
             showPaymentInfo: showPaymentInfo,
           );
+          PdfProgressDialog.hide();
+          await Future.delayed(const Duration(milliseconds: 100));
           final finalName = fileName.endsWith('.pdf') ? fileName : '$fileName.pdf';
           await ShareService.sharePdf(bytes, filename: finalName);
         } catch (e) {
+          PdfProgressDialog.hide();
           messenger.showSnackBar(
             SnackBar(content: Text('PDF error: $e'), backgroundColor: AppColors.error),
           );

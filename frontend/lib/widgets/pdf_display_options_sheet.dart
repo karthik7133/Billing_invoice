@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'pdf_progress_dialog.dart';
 
 class PdfDisplayOptionsSheet extends StatefulWidget {
   final String defaultFileName;
@@ -68,7 +67,6 @@ class _PdfDisplayOptionsSheetState extends State<PdfDisplayOptionsSheet> {
   late bool _showPaymentStatus;
   late bool _showPaymentInfo;
   bool _editingName = false;
-  bool _isApplying = false;
 
   @override
   void initState() {
@@ -247,29 +245,26 @@ class _PdfDisplayOptionsSheetState extends State<PdfDisplayOptionsSheet> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: ElevatedButton(
-                        onPressed: _isApplying
-                            ? null
-                            : () async {
-                                setState(() => _isApplying = true);
-                                final name = _fileNameController.text.trim().isNotEmpty
-                                    ? _fileNameController.text.trim()
-                                    : widget.defaultFileName;
-                                Navigator.pop(context);
-                                
-                                // Show loading progress overlay on screen
-                                PdfProgressDialog.show(context, message: 'Preparing Statement PDF...');
-                                try {
-                                  await widget.onApply(
-                                    fileName: name,
-                                    showItemDetails: _showItemDetails,
-                                    showDescription: _showDescription,
-                                    showPaymentStatus: _showPaymentStatus,
-                                    showPaymentInfo: _showPaymentInfo,
-                                  );
-                                } finally {
-                                  PdfProgressDialog.hide();
-                                }
-                              },
+                        onPressed: () async {
+                          final name = _fileNameController.text.trim().isNotEmpty
+                              ? _fileNameController.text.trim()
+                              : widget.defaultFileName;
+                          final onApplyCallback = widget.onApply;
+                          final itemDetails = _showItemDetails;
+                          final desc = _showDescription;
+                          final pStatus = _showPaymentStatus;
+                          final pInfo = _showPaymentInfo;
+
+                          Navigator.pop(context);
+
+                          await onApplyCallback(
+                            fileName: name,
+                            showItemDetails: itemDetails,
+                            showDescription: desc,
+                            showPaymentStatus: pStatus,
+                            showPaymentInfo: pInfo,
+                          );
+                        },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFFDC2626),
                           foregroundColor: Colors.white,
@@ -279,22 +274,13 @@ class _PdfDisplayOptionsSheetState extends State<PdfDisplayOptionsSheet> {
                           ),
                           elevation: 0,
                         ),
-                        child: _isApplying
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  color: Colors.white,
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Text(
-                                'Apply',
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
+                        child: const Text(
+                          'Apply',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
                       ),
                     ),
                   ],

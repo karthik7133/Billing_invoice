@@ -23,6 +23,10 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
   late InvoiceModel _invoice;
   late String _invoiceId;
 
+  /// Guards to prevent duplicate API calls from rapid button taps
+  bool _isMarkingPaid = false;
+  bool _isRecordingPayment = false;
+
   @override
   void initState() {
     super.initState();
@@ -145,30 +149,44 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
             onPressed: () => Navigator.pop(ctx),
             child: const Text('Cancel'),
           ),
-          ElevatedButton(
-            onPressed: () {
-              final paid = double.tryParse(controller.text.trim()) ?? 0.0;
-              final invoiceProvider = Provider.of<InvoiceProvider>(context, listen: false);
-              final totalPaid = _invoice.amountPaid + paid;
-              invoiceProvider.updatePayment(_invoice.id, totalPaid);
+          StatefulBuilder(
+            builder: (ctx2, setDialogState) => ElevatedButton(
+              onPressed: _isRecordingPayment
+                  ? null
+                  : () async {
+                      setDialogState(() => _isRecordingPayment = true);
+                      final paid = double.tryParse(controller.text.trim()) ?? 0.0;
+                      if (paid <= 0) {
+                        setDialogState(() => _isRecordingPayment = false);
+                        return;
+                      }
+                      final messenger = ScaffoldMessenger.of(context);
+                      final invoiceProvider = Provider.of<InvoiceProvider>(ctx, listen: false);
+                      final totalPaid = _invoice.amountPaid + paid;
+                      await invoiceProvider.updatePayment(_invoice.id, totalPaid);
 
-              setState(() {
-                final balance = (_invoice.grandTotal - totalPaid).clamp(0.0, _invoice.grandTotal);
-                String status = 'PARTIALLY_PAID';
-                if (totalPaid >= _invoice.grandTotal) status = 'PAID';
-                _invoice = _invoice.copyWith(
-                  amountPaid: totalPaid,
-                  balanceDue: balance,
-                  status: status,
-                );
-              });
-
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Payment recorded successfully!'), backgroundColor: AppColors.success),
-              );
-            },
-            child: const Text('Record Payment'),
+                      if (ctx.mounted) Navigator.pop(ctx);
+                      if (mounted) {
+                        setState(() {
+                          final balance = (_invoice.grandTotal - totalPaid).clamp(0.0, _invoice.grandTotal);
+                          String status = 'PARTIALLY_PAID';
+                          if (totalPaid >= _invoice.grandTotal) status = 'PAID';
+                          _invoice = _invoice.copyWith(
+                            amountPaid: totalPaid,
+                            balanceDue: balance,
+                            status: status,
+                          );
+                          _isRecordingPayment = false;
+                        });
+                        messenger.showSnackBar(
+                          const SnackBar(content: Text('Payment recorded successfully!'), backgroundColor: AppColors.success),
+                        );
+                      }
+                    },
+              child: _isRecordingPayment
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('Record Payment'),
+            ),
           ),
         ],
       ),
@@ -622,7 +640,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: _recordPaymentDialog,
+                      onPressed: _isRecordingPayment ? null : _recordPaymentDialog,
                       icon: const Icon(Icons.payment, size: 18),
                       label: const Text('Record Payment'),
                     ),
@@ -631,22 +649,31 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                   Expanded(
                     child: ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(backgroundColor: AppColors.success),
-                      onPressed: () {
-                        final provider = Provider.of<InvoiceProvider>(context, listen: false);
-                        provider.markInvoiceAsPaid(_invoice.id);
-                        setState(() {
-                          _invoice = _invoice.copyWith(
-                            amountPaid: _invoice.grandTotal,
-                            balanceDue: 0,
-                            status: 'PAID',
-                          );
-                        });
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Marked as fully PAID!'), backgroundColor: AppColors.success),
-                        );
-                      },
-                      icon: const Icon(Icons.check_circle_outline, size: 18),
-                      label: const Text('Mark Full Paid'),
+                      onPressed: _isMarkingPaid
+                          ? null
+                          : () async {
+                              setState(() => _isMarkingPaid = true);
+                              final provider = Provider.of<InvoiceProvider>(context, listen: false);
+                              await provider.markInvoiceAsPaid(_invoice.id);
+                              if (!mounted) return;
+                              setState(() {
+                                _invoice = _invoice.copyWith(
+                                  amountPaid: _invoice.grandTotal,
+                                  balanceDue: 0,
+                                  status: 'PAID',
+                                );
+                                _isMarkingPaid = false;
+                              });
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Marked as fully PAID!'), backgroundColor: AppColors.success),
+                                );
+                              }
+                            },
+                      icon: _isMarkingPaid
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          : const Icon(Icons.check_circle_outline, size: 18),
+                      label: _isMarkingPaid ? const Text('Processing...') : const Text('Mark Full Paid'),
                     ),
                   ),
                 ],

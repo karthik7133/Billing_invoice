@@ -19,12 +19,10 @@ class ProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isService = product.itemType == 'SERVICE';
-
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: const Color(0xFFE2E8F0)),
         boxShadow: [
@@ -48,86 +46,54 @@ class ProductCard extends StatelessWidget {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: isService
-                      ? const Color(0xFFF5F3FF)
-                      : const Color(0xFFEFF6FF),
+                  color: const Color(0xFFEFF6FF),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(
-                  isService ? Icons.design_services_outlined : Icons.inventory_2_outlined,
-                  color: isService ? const Color(0xFF7C3AED) : const Color(0xFF2563EB),
+                child: const Icon(
+                  Icons.inventory_2_outlined,
+                  color: Color(0xFF2563EB),
                   size: 22,
                 ),
               ),
               const SizedBox(width: 12),
 
-              // Name + details
+              // Name + Unit
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            product.name,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 15,
-                              color: Color(0xFF0F172A),
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFEFF6FF),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            'GST ${product.gstRate.toStringAsFixed(0)}%',
-                            style: const TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF2563EB),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (product.description.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        product.description,
-                        style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                    Text(
+                      product.name,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                        color: Color(0xFF0F172A),
                       ),
-                    ],
-                    const SizedBox(height: 3),
-                    Wrap(
-                      spacing: 8,
-                      children: [
-                        if (product.hsnSac.isNotEmpty)
-                          Text(
-                            'HSN: ${product.hsnSac}',
-                            style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
-                          ),
-                        Text(
-                          'Unit: ${product.unit}',
-                          style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        'Unit: ${product.unit.isNotEmpty ? product.unit : "Kg"}',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF475569),
                         ),
-                      ],
+                      ),
                     ),
                   ],
                 ),
               ),
               const SizedBox(width: 8),
 
-              // Price + menu
+              // Rate / Price + More Menu
               Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -155,7 +121,7 @@ class ProductCard extends StatelessWidget {
                           children: [
                             Icon(Icons.edit_outlined, size: 17, color: Color(0xFF475569)),
                             SizedBox(width: 8),
-                            Text('Edit Product'),
+                            Text('Edit Item'),
                           ],
                         ),
                       ),
@@ -165,7 +131,7 @@ class ProductCard extends StatelessWidget {
                           children: [
                             Icon(Icons.delete_outline, size: 17, color: AppColors.payableRed),
                             SizedBox(width: 8),
-                            Text('Delete Product', style: TextStyle(color: AppColors.payableRed)),
+                            Text('Delete Item', style: TextStyle(color: AppColors.payableRed)),
                           ],
                         ),
                       ),

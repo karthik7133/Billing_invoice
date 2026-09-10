@@ -556,7 +556,7 @@ class PdfInvoiceService {
     );
   }
 
-  // ─── Party Statement PDF ──────────────────────────────────────────────────
+  // ─── Party Statement PDF (Matching SVSF TN Reference Layout Pixel-to-Pixel) ─
 
   static Future<Uint8List> generatePartyStatementPdf({
     required CustomerModel customer,
@@ -577,30 +577,24 @@ class PdfInvoiceService {
     final b = business ??
         (invoices.isNotEmpty
             ? invoices.first.businessSnapshot
-            : BusinessModel(id: '', businessName: 'JMJ SEA FOODS'));
+            : BusinessModel(id: '', businessName: 'JMJ SEA FOODS', phone: '9010966188', email: 'donijoel12345@gmail.com'));
 
-    // Use company logo if available, else fall back to crab_logo.png
+    // Logo
     final logoImage = await _resolveLogoImage(b.logo);
 
-    final dfmt = DateFormat('dd-MM-yyyy');
-    final dfmtShort = DateFormat('dd MMM yy');
+    final dfmt = DateFormat('dd/MM/yyyy');
 
-    double totalPurchases = 0.0;
-    double totalPaid = 0.0;
-    double totalOverMoney = 0.0;
-
-    // Filter invoices within the date range and sort chronologically
     final fromDay = DateTime(fromDate.year, fromDate.month, fromDate.day);
     final toDay = DateTime(toDate.year, toDate.month, toDate.day, 23, 59, 59);
 
     // Calculate opening balance before fromDate
-    double balance = customer.openingBalance;
+    double runningBalance = customer.openingBalance;
     for (final inv in invoices) {
       if (inv.invoiceDate.isBefore(fromDay)) {
-        balance += (inv.grandTotal - inv.amountPaid);
+        runningBalance += (inv.grandTotal - inv.amountPaid);
       }
     }
-    final initialOpening = balance;
+    final initialOpening = runningBalance;
 
     final filtered = invoices.where((inv) {
       final d = inv.invoiceDate;
@@ -608,435 +602,388 @@ class PdfInvoiceService {
     }).toList()
       ..sort((a, b) => a.invoiceDate.compareTo(b.invoiceDate));
 
+    // Master Table Column Widths (Exact Proportion to A4 Usable Width)
+    const masterColWidths = <int, pw.TableColumnWidth>{
+      0: pw.FixedColumnWidth(56), // Date
+      1: pw.FixedColumnWidth(48), // Txn Type
+      2: pw.FixedColumnWidth(54), // Invoice/ Bill No.
+      3: pw.FixedColumnWidth(78), // Total Amount
+      4: pw.FixedColumnWidth(82), // Received/ Paid Amount
+      5: pw.FixedColumnWidth(68), // Txn Balance
+      6: pw.FixedColumnWidth(74), // Receivable Balance
+      7: pw.FixedColumnWidth(63), // Payable Balance
+    };
+
+    String formatBillNo(String invoiceNumber) {
+      final trimmed = invoiceNumber.trim();
+      if (trimmed.isEmpty) return '-';
+      if (RegExp(r'^\d+$').hasMatch(trimmed)) {
+        return 'No$trimmed';
+      }
+      return trimmed;
+    }
+
+    String formatQty(double qty) {
+      if (qty.truncateToDouble() == qty) {
+        return qty.toInt().toString();
+      }
+      return qty.toStringAsFixed(2);
+    }
+
     pdf.addPage(
       pw.MultiPage(
-        pageFormat: const PdfPageFormat(
-          8.5 * PdfPageFormat.inch,
-          11.0 * PdfPageFormat.inch,
-          marginLeft: 1.9 * PdfPageFormat.cm,
-          marginRight: 1.9 * PdfPageFormat.cm,
-          marginTop: 1.6 * PdfPageFormat.cm,
-          marginBottom: 1.6 * PdfPageFormat.cm,
-        ),
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.symmetric(horizontal: 20, vertical: 18),
         theme: pw.ThemeData.withFont(
           base: fontRegular,
           bold: fontBold,
           italic: fontItalic,
         ),
+        footer: (ctx) {
+          return pw.Container(
+            alignment: pw.Alignment.center,
+            margin: const pw.EdgeInsets.only(top: 8),
+            child: pw.Text(
+              'Page ${ctx.pageNumber}',
+              style: pw.TextStyle(
+                font: fontRegular,
+                fontSize: 9,
+                color: PdfColor.fromHex('#9CA3AF'),
+              ),
+            ),
+          );
+        },
         build: (ctx) {
-          return [
-            // ─── 1. CONSTANT HEADER: Company Block + Crab Logo ───
+          final contentWidgets = <pw.Widget>[];
+
+          // ─── 1. TOP HEADER: Logo (Left) + Business Info (Right) ───
+          contentWidgets.add(
             pw.Row(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
-                // Left: Company Block
-                pw.Expanded(
-                  flex: 7,
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text(
-                        b.businessName.isNotEmpty ? b.businessName.toUpperCase() : 'JMJ SEA FOODS',
-                        style: pw.TextStyle(
-                          font: fontBold,
-                          fontSize: 20,
-                          color: darkText,
-                        ),
-                      ),
-                      pw.SizedBox(height: 4),
-                      if (b.phone.isNotEmpty)
-                        pw.Text(
-                          'Phone no.: ${b.phone}',
-                          style: pw.TextStyle(font: fontRegular, fontSize: 9.5, color: textGray),
-                        ),
-                      if (b.email.isNotEmpty)
-                        pw.Text(
-                          'Email: ${b.email}',
-                          style: pw.TextStyle(font: fontRegular, fontSize: 9.5, color: textGray),
-                        ),
-                      if (b.gstin.isNotEmpty)
-                        pw.Text(
-                          'GSTIN: ${b.gstin}',
-                          style: pw.TextStyle(font: fontRegular, fontSize: 9.5, color: textGray),
-                        ),
-                      if (b.address.isNotEmpty)
-                        pw.Text(
-                          'Address: ${b.address}',
-                          style: pw.TextStyle(font: fontRegular, fontSize: 9.5, color: textGray),
-                        ),
-                    ],
-                  ),
-                ),
+                // Left: Company Logo
+                if (logoImage != null)
+                  pw.Container(
+                    width: 75,
+                    height: 50,
+                    alignment: pw.Alignment.centerLeft,
+                    child: pw.Image(logoImage, width: 75, height: 50, fit: pw.BoxFit.contain),
+                  )
+                else
+                  pw.Container(width: 75, height: 50),
 
-                // Right: Logo
-                pw.Container(
-                  width: 65,
-                  height: 65,
-                  alignment: pw.Alignment.center,
-                  child: logoImage != null
-                      ? pw.Image(logoImage, width: 65, height: 65, fit: pw.BoxFit.contain)
-                      : pw.Container(
-                          width: 50,
-                          height: 50,
-                          alignment: pw.Alignment.center,
-                          decoration: pw.BoxDecoration(
-                            shape: pw.BoxShape.circle,
-                            border: pw.Border.all(color: brandPurple, width: 1.5),
+                // Right: Business Name & Contact Info
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.end,
+                  children: [
+                    pw.Text(
+                      b.businessName.isNotEmpty ? b.businessName.toUpperCase() : 'JMJ SEA FOODS',
+                      style: pw.TextStyle(
+                        font: fontBold,
+                        fontSize: 16,
+                        color: PdfColors.black,
+                      ),
+                    ),
+                    pw.SizedBox(height: 4),
+                    pw.Row(
+                      mainAxisSize: pw.MainAxisSize.min,
+                      children: [
+                        if (b.phone.isNotEmpty)
+                          pw.Text(
+                            'Phone no.: ${b.phone}  ',
+                            style: pw.TextStyle(font: fontRegular, fontSize: 9, color: PdfColors.black),
                           ),
-                          child: pw.Text(
-                            'CRAB',
-                            style: pw.TextStyle(
-                              font: fontBold,
-                              fontSize: 10,
-                              color: brandPurple,
-                            ),
+                        if (b.email.isNotEmpty)
+                          pw.Text(
+                            'Email: ${b.email}',
+                            style: pw.TextStyle(font: fontRegular, fontSize: 9, color: PdfColors.black),
                           ),
-                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ],
             ),
+          );
 
-            pw.SizedBox(height: 6),
-            pw.Divider(color: brandPurple, thickness: 1.8),
-            pw.SizedBox(height: 3),
+          contentWidgets.add(pw.SizedBox(height: 6));
+          contentWidgets.add(pw.Divider(color: PdfColors.black, thickness: 1.0));
+          contentWidgets.add(pw.SizedBox(height: 14));
 
-            // ─── 2. TITLE: PARTY STATEMENT ───
+          // ─── 2. STATEMENT TITLE & PARTY INFO ───
+          contentWidgets.add(
             pw.Center(
               child: pw.Text(
-                'PARTY STATEMENT',
+                'Party Statement',
                 style: pw.TextStyle(
                   font: fontBold,
                   fontSize: 20,
-                  color: brandPurple,
-                  letterSpacing: 0.5,
+                  color: PdfColors.black,
+                  decoration: pw.TextDecoration.underline,
                 ),
               ),
             ),
-            pw.SizedBox(height: 12),
+          );
 
-            // ─── 3. BILL TO (Left 55%) / STATEMENT PERIOD (Right 40%) ───
-            pw.Row(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          contentWidgets.add(pw.SizedBox(height: 16));
+
+          contentWidgets.add(
+            pw.Text(
+              'Party name: ${customer.name.isNotEmpty ? customer.name : "Customer"}',
+              style: pw.TextStyle(
+                font: fontBold,
+                fontSize: 14,
+                color: PdfColors.black,
+              ),
+            ),
+          );
+
+          contentWidgets.add(pw.SizedBox(height: 6));
+
+          contentWidgets.add(
+            pw.Text(
+              'Duration: From ${dfmt.format(fromDate)} to ${dfmt.format(toDate)}',
+              style: pw.TextStyle(
+                font: fontBold,
+                fontSize: 14,
+                color: PdfColors.black,
+              ),
+            ),
+          );
+
+          contentWidgets.add(pw.SizedBox(height: 14));
+
+          // ─── 3. MASTER TABLE HEADER ───
+          contentWidgets.add(
+            pw.Table(
+              columnWidths: masterColWidths,
               children: [
-                // Bill To / Customer
-                pw.Expanded(
-                  flex: 55,
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text(
-                        'Party Details',
-                        style: pw.TextStyle(font: fontBold, fontSize: 10.5, color: darkText),
-                      ),
-                      pw.SizedBox(height: 3),
-                      pw.Text(
-                        customer.name.isNotEmpty ? customer.name : 'Customer',
-                        style: pw.TextStyle(font: fontBold, fontSize: 11, color: darkText),
-                      ),
-                      if (customer.phone.isNotEmpty)
-                        pw.Text(
-                          'Phone: ${customer.phone}',
-                          style: pw.TextStyle(font: fontRegular, fontSize: 9.5, color: textGray),
-                        ),
-                      if (customer.billingAddress.isNotEmpty)
-                        pw.Text(
-                          customer.billingAddress,
-                          style: pw.TextStyle(font: fontRegular, fontSize: 9.5, color: textGray),
-                        ),
-                      if (customer.gstin.isNotEmpty)
-                        pw.Text(
-                          'GSTIN: ${customer.gstin}',
-                          style: pw.TextStyle(font: fontRegular, fontSize: 9.5, color: textGray),
-                        ),
-                    ],
+                pw.TableRow(
+                  decoration: const pw.BoxDecoration(
+                    color: PdfColor.fromInt(0xFFE0E0E0),
+                    border: pw.Border(
+                      top: pw.BorderSide(color: PdfColors.black, width: 0.8),
+                      bottom: pw.BorderSide(color: PdfColors.black, width: 0.8),
+                    ),
                   ),
-                ),
-
-                // Statement Period
-                pw.Expanded(
-                  flex: 40,
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.end,
-                    children: [
-                      pw.Text(
-                        'Statement Period',
-                        style: pw.TextStyle(font: fontBold, fontSize: 10.5, color: darkText),
-                      ),
-                      pw.SizedBox(height: 3),
-                      pw.Text(
-                        'From: ${dfmt.format(fromDate)}',
-                        style: pw.TextStyle(font: fontRegular, fontSize: 10, color: darkText),
-                      ),
-                      pw.SizedBox(height: 2),
-                      pw.Text(
-                        'To: ${dfmt.format(toDate)}',
-                        style: pw.TextStyle(font: fontRegular, fontSize: 10, color: darkText),
-                      ),
-                      pw.SizedBox(height: 2),
-                      pw.Text(
-                        'Total Txns: ${filtered.length}',
-                        style: pw.TextStyle(font: fontBold, fontSize: 9.5, color: brandPurple),
-                      ),
-                    ],
-                  ),
+                  children: [
+                    _masterHeaderCell('Date', fontBold),
+                    _masterHeaderCell('Txn Type', fontBold),
+                    _masterHeaderCell('Invoice/ Bill\nNo.', fontBold, align: pw.TextAlign.center),
+                    _masterHeaderCell('Total Amount', fontBold, align: pw.TextAlign.right),
+                    _masterHeaderCell('Received/ Paid\nAmount', fontBold, align: pw.TextAlign.right),
+                    _masterHeaderCell('Txn Balance', fontBold, align: pw.TextAlign.right),
+                    _masterHeaderCell('Receivable\nBalance', fontBold, align: pw.TextAlign.right),
+                    _masterHeaderCell('Payable\nBalance', fontBold, align: pw.TextAlign.right),
+                  ],
                 ),
               ],
             ),
+          );
 
-            pw.SizedBox(height: 14),
+          // ─── 4. OPENING BALANCE (If non-zero) ───
+          if (initialOpening != 0) {
+            final recBal = initialOpening > 0 ? initialOpening : 0.0;
+            final payBal = initialOpening < 0 ? initialOpening.abs() : 0.0;
 
-            // ─── 4. TRANSACTIONS LEDGER TABLE ───
-            pw.Table(
-              columnWidths: {
-                0: const pw.FixedColumnWidth(65),
-                1: const pw.FlexColumnWidth(2.5),
-                2: const pw.FlexColumnWidth(2.0),
-                if (showPaymentStatus) 3: const pw.FixedColumnWidth(60),
-                if (showPaymentStatus) 4: const pw.FixedColumnWidth(80),
-                if (showPaymentStatus) 5: const pw.FixedColumnWidth(80),
-                if (!showPaymentStatus) 3: const pw.FixedColumnWidth(80),
-                if (!showPaymentStatus) 4: const pw.FixedColumnWidth(80),
-              },
-              children: [
-                // Header Row
-                pw.TableRow(
-                  decoration: pw.BoxDecoration(color: brandPurple),
-                  children: [
-                    _stmtHeader('Date', fontBold),
-                    _stmtHeader('Type / Particulars', fontBold),
-                    _stmtHeader('Ref No.', fontBold),
-                    if (showPaymentStatus) _stmtHeader('Status', fontBold, align: pw.TextAlign.center),
-                    _stmtHeader('Amount (₹)', fontBold, align: pw.TextAlign.right),
-                    _stmtHeader('Balance (₹)', fontBold, align: pw.TextAlign.right),
-                  ],
-                ),
+            contentWidgets.add(
+              pw.Table(
+                columnWidths: masterColWidths,
+                children: [
+                  pw.TableRow(
+                    children: [
+                      _txnCell(dfmt.format(fromDate), fontBold),
+                      _txnCell('Opening Balance', fontBold),
+                      _txnCell('-', fontBold, align: pw.TextAlign.center),
+                      _txnCell('-', fontBold, align: pw.TextAlign.right),
+                      _txnCell('-', fontBold, align: pw.TextAlign.right),
+                      _txnCell('₹ ${CurrencyFormatter.format(initialOpening.abs(), showSymbol: false)}', fontBold, align: pw.TextAlign.right),
+                      _txnCell(recBal > 0 ? '₹ ${CurrencyFormatter.format(recBal, showSymbol: false)}' : '₹ 0.00', fontBold, align: pw.TextAlign.right),
+                      _txnCell(payBal > 0 ? '₹ ${CurrencyFormatter.format(payBal, showSymbol: false)}' : '', fontBold, align: pw.TextAlign.right),
+                    ],
+                  ),
+                ],
+              ),
+            );
+            contentWidgets.add(pw.Divider(color: PdfColor.fromHex('#E0E0E0'), thickness: 0.6));
+          }
 
-                // Opening Balance Row
-                pw.TableRow(
-                  decoration: const pw.BoxDecoration(color: PdfColors.white),
-                  children: [
-                    _stmtCell(dfmtShort.format(fromDate), fontRegular),
-                    _stmtCell('Opening Balance', fontBold, isBold: true, font: fontBold),
-                    _stmtCell('-', fontRegular),
-                    if (showPaymentStatus) _stmtCell('-', fontRegular, align: pw.TextAlign.center),
-                    _stmtCell('-', fontRegular, align: pw.TextAlign.right),
-                    _stmtCell(
-                      initialOpening == 0
-                          ? '0.00'
-                          : '${CurrencyFormatter.format(initialOpening.abs(), showSymbol: false)} ${initialOpening > 0 ? "Dr" : "Cr"}',
-                      fontBold,
-                      align: pw.TextAlign.right,
-                      color: initialOpening > 0 ? PdfColor.fromHex('#DC2626') : PdfColor.fromHex('#16A34A'),
-                    ),
-                  ],
-                ),
+          // ─── 5. TRANSACTIONS LIST ───
+          for (final inv in filtered) {
+            final txnTotal = inv.grandTotal;
+            final txnReceived = inv.amountPaid;
+            final txnBalance = txnTotal - txnReceived;
 
-                // Transactions
-                ...filtered.expand((inv) {
-                  totalPurchases += inv.grandTotal;
-                  balance += inv.grandTotal;
+            runningBalance += txnBalance;
 
-                  final rowsList = <pw.TableRow>[];
+            final receivableBalance = runningBalance > 0 ? runningBalance : 0.0;
+            final payableBalance = runningBalance < 0 ? runningBalance.abs() : 0.0;
 
-                  // Purchase row
-                  final statusText = inv.isPaid ? 'PAID' : (inv.balanceDue < inv.grandTotal ? 'PARTIAL' : 'UNPAID');
-                  final statusColor = inv.isPaid
-                      ? PdfColor.fromHex('#16A34A')
-                      : (inv.balanceDue < inv.grandTotal ? PdfColor.fromHex('#2563EB') : PdfColor.fromHex('#DC2626'));
+            final totalItemQty = inv.items.fold<double>(0.0, (s, it) => s + it.quantity);
 
-                  // Build details subtext if item details / description requested
-                  String detailsSubtext = '';
-                  if (showItemDetails && inv.items.isNotEmpty) {
-                    detailsSubtext += inv.items.map((it) => '${it.name} (${it.quantity}${it.unit.isNotEmpty ? it.unit : ''} @ ₹${CurrencyFormatter.format(it.rate, showSymbol: false)})').join(', ');
-                  }
-                  if (showDescription && inv.description.isNotEmpty) {
-                    if (detailsSubtext.isNotEmpty) detailsSubtext += '\n';
-                    detailsSubtext += 'Note: ${inv.description}';
-                  }
+            contentWidgets.add(
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.SizedBox(height: 4),
 
-                  rowsList.add(
-                    pw.TableRow(
-                      decoration: const pw.BoxDecoration(color: PdfColors.white),
-                      children: [
-                        _stmtCell(dfmtShort.format(inv.invoiceDate), fontRegular),
-                        pw.Padding(
-                          padding: const pw.EdgeInsets.symmetric(vertical: 5, horizontal: 5),
-                          child: pw.Column(
-                            crossAxisAlignment: pw.CrossAxisAlignment.start,
-                            children: [
-                              pw.Text('Purchase', style: pw.TextStyle(font: fontBold, fontSize: 9.5, color: darkText)),
-                              if (detailsSubtext.isNotEmpty) ...[
-                                pw.SizedBox(height: 2),
-                                pw.Text(
-                                  detailsSubtext,
-                                  style: pw.TextStyle(font: fontRegular, fontSize: 8, color: textGray),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                        _stmtCell('#${inv.invoiceNumber}', fontRegular),
-                        if (showPaymentStatus)
-                          pw.Padding(
-                            padding: const pw.EdgeInsets.symmetric(vertical: 5, horizontal: 2),
-                            child: pw.Center(
-                              child: pw.Container(
-                                padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                                decoration: pw.BoxDecoration(
-                                  color: lightPurple,
-                                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(3)),
-                                ),
-                                child: pw.Text(
-                                  statusText,
-                                  style: pw.TextStyle(font: fontBold, fontSize: 7.5, color: statusColor),
-                                ),
+                  // A. Main Transaction Row
+                  pw.Table(
+                    columnWidths: masterColWidths,
+                    children: [
+                      pw.TableRow(
+                        children: [
+                          _txnCell(dfmt.format(inv.invoiceDate), fontBold),
+                          _txnCell('Sale', fontBold),
+                          _txnCell(formatBillNo(inv.invoiceNumber), fontBold, align: pw.TextAlign.center),
+                          _txnCell('₹ ${CurrencyFormatter.format(txnTotal, showSymbol: false)}', fontBold, align: pw.TextAlign.right),
+                          _txnCell('₹ ${CurrencyFormatter.format(txnReceived, showSymbol: false)}', fontBold, align: pw.TextAlign.right),
+                          _txnCell('₹ ${CurrencyFormatter.format(txnBalance, showSymbol: false)}', fontBold, align: pw.TextAlign.right),
+                          _txnCell('₹ ${CurrencyFormatter.format(receivableBalance, showSymbol: false)}', fontBold, align: pw.TextAlign.right),
+                          _txnCell(payableBalance > 0 ? '₹ ${CurrencyFormatter.format(payableBalance, showSymbol: false)}' : '', fontBold, align: pw.TextAlign.right),
+                        ],
+                      ),
+                    ],
+                  ),
+
+                  // B. Nested Items Table (Indented matching reference PDF)
+                  if (showItemDetails && inv.items.isNotEmpty) ...[
+                    pw.Padding(
+                      padding: const pw.EdgeInsets.only(left: 65, right: 0, top: 4, bottom: 2),
+                      child: pw.Table(
+                        columnWidths: const {
+                          0: pw.FixedColumnWidth(22), // #
+                          1: pw.FlexColumnWidth(2.5), // Item Name
+                          2: pw.FixedColumnWidth(55), // Quantity
+                          3: pw.FixedColumnWidth(38), // Unit
+                          4: pw.FixedColumnWidth(75), // Price/ Unit
+                          5: pw.FixedColumnWidth(85), // Amount
+                        },
+                        children: [
+                          // Item table header
+                          pw.TableRow(
+                            decoration: const pw.BoxDecoration(
+                              color: PdfColor.fromInt(0xFFE0E0E0),
+                              border: pw.Border(
+                                top: pw.BorderSide(color: PdfColors.black, width: 0.6),
+                                bottom: pw.BorderSide(color: PdfColors.black, width: 0.6),
                               ),
                             ),
+                            children: [
+                              _itemHeaderCell('#', fontBold, align: pw.TextAlign.center),
+                              _itemHeaderCell('Item Name', fontBold),
+                              _itemHeaderCell('Quantity', fontBold, align: pw.TextAlign.right),
+                              _itemHeaderCell('Unit', fontBold, align: pw.TextAlign.center),
+                              _itemHeaderCell('Price/ Unit', fontBold, align: pw.TextAlign.right),
+                              _itemHeaderCell('Amount', fontBold, align: pw.TextAlign.right),
+                            ],
                           ),
-                        _stmtCell(CurrencyFormatter.format(inv.grandTotal, showSymbol: false), fontRegular, align: pw.TextAlign.right),
-                        _stmtCell(
-                          balance == 0
-                              ? '0.00'
-                              : '${CurrencyFormatter.format(balance.abs(), showSymbol: false)} ${balance > 0 ? "Dr" : "Cr"}',
-                          fontBold,
-                          align: pw.TextAlign.right,
-                          color: balance > 0 ? PdfColor.fromHex('#DC2626') : PdfColor.fromHex('#16A34A'),
-                        ),
-                      ],
-                    ),
-                  );
 
-                  // Payment row (if any payment recorded on invoice)
-                  if (inv.amountPaid > 0) {
-                    totalPaid += inv.amountPaid;
-                    balance -= inv.amountPaid;
-                    if (inv.overMoneyAmount > 0) totalOverMoney += inv.overMoneyAmount;
+                          // Item data rows
+                          ...inv.items.asMap().entries.map((entry) {
+                            final idx = entry.key;
+                            final it = entry.value;
+                            return pw.TableRow(
+                              decoration: const pw.BoxDecoration(
+                                border: pw.Border(
+                                  bottom: pw.BorderSide(color: PdfColor.fromInt(0xFFE5E7EB), width: 0.4),
+                                ),
+                              ),
+                              children: [
+                                _itemCell('${idx + 1}', fontRegular, align: pw.TextAlign.center),
+                                _itemCell(it.name.toUpperCase(), fontRegular),
+                                _itemCell(formatQty(it.quantity), fontRegular, align: pw.TextAlign.right),
+                                _itemCell(it.unit.isNotEmpty ? it.unit : '-', fontRegular, align: pw.TextAlign.center),
+                                _itemCell('₹ ${CurrencyFormatter.format(it.rate, showSymbol: false)}', fontRegular, align: pw.TextAlign.right),
+                                _itemCell('₹ ${CurrencyFormatter.format(it.total, showSymbol: false)}', fontRegular, align: pw.TextAlign.right),
+                              ],
+                            );
+                          }),
 
-                    final paymentInfoStr = showPaymentInfo && inv.paymentType.isNotEmpty ? ' (${inv.paymentType})' : '';
-                    final excessNote = inv.overMoneyAmount > 0 ? ' [Over: ₹${CurrencyFormatter.format(inv.overMoneyAmount, showSymbol: false)}]' : '';
-
-                    rowsList.add(
-                      pw.TableRow(
-                        decoration: pw.BoxDecoration(color: PdfColor.fromHex('#F8FAFC')),
-                        children: [
-                          _stmtCell(dfmtShort.format(inv.invoiceDate), fontRegular),
-                          _stmtCell('Payment Received$paymentInfoStr$excessNote', fontRegular, color: PdfColor.fromHex('#16A34A')),
-                          _stmtCell('#${inv.invoiceNumber}', fontRegular),
-                          if (showPaymentStatus) _stmtCell('-', fontRegular, align: pw.TextAlign.center),
-                          _stmtCell('-${CurrencyFormatter.format(inv.amountPaid, showSymbol: false)}', fontRegular, align: pw.TextAlign.right, color: PdfColor.fromHex('#16A34A')),
-                          _stmtCell(
-                            balance == 0
-                                ? '0.00'
-                                : '${CurrencyFormatter.format(balance.abs(), showSymbol: false)} ${balance > 0 ? "Dr" : "Cr"}',
-                            fontBold,
-                            align: pw.TextAlign.right,
-                            color: balance > 0 ? PdfColor.fromHex('#DC2626') : PdfColor.fromHex('#16A34A'),
+                          // Item total row
+                          pw.TableRow(
+                            decoration: const pw.BoxDecoration(
+                              border: pw.Border(
+                                top: pw.BorderSide(color: PdfColors.black, width: 0.8),
+                                bottom: pw.BorderSide(color: PdfColors.black, width: 0.8),
+                              ),
+                            ),
+                            children: [
+                              _itemCell('', fontRegular),
+                              _itemCell('Total', fontBold, isBold: true),
+                              _itemCell(formatQty(totalItemQty), fontBold, align: pw.TextAlign.right, isBold: true),
+                              _itemCell('', fontRegular),
+                              _itemCell('', fontRegular),
+                              _itemCell('₹ ${CurrencyFormatter.format(inv.grandTotal, showSymbol: false)}', fontBold, align: pw.TextAlign.right, isBold: true),
+                            ],
                           ),
                         ],
                       ),
-                    );
-                  }
-
-                  return rowsList;
-                }),
-              ],
-            ),
-
-            pw.SizedBox(height: 14),
-
-            // ─── 5. SUMMARY BOX (Left: Bank Details if showPaymentInfo, Right: Totals) ───
-            pw.Row(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              children: [
-                // Left: Bank & Payment Info if enabled
-                if (showPaymentInfo && (b.bankDetails.bankName.isNotEmpty || b.bankDetails.upiId.isNotEmpty))
-                  pw.Expanded(
-                    flex: 55,
-                    child: pw.Container(
-                      padding: const pw.EdgeInsets.all(10),
-                      decoration: pw.BoxDecoration(
-                        color: lightPurple,
-                        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
-                        border: pw.Border.all(color: brandPurple.flatten(), width: 0.5),
-                      ),
-                      child: pw.Column(
-                        crossAxisAlignment: pw.CrossAxisAlignment.start,
-                        children: [
-                          pw.Text(
-                            'Payment & Bank Information',
-                            style: pw.TextStyle(font: fontBold, fontSize: 9.5, color: darkText),
-                          ),
-                          pw.SizedBox(height: 4),
-                          if (b.bankDetails.bankName.isNotEmpty)
-                            pw.Text('Bank: ${b.bankDetails.bankName}', style: pw.TextStyle(font: fontRegular, fontSize: 8.5, color: darkText)),
-                          if (b.bankDetails.accountNumber.isNotEmpty)
-                            pw.Text('A/C No: ${b.bankDetails.accountNumber}', style: pw.TextStyle(font: fontRegular, fontSize: 8.5, color: darkText)),
-                          if (b.bankDetails.ifscCode.isNotEmpty)
-                            pw.Text('IFSC: ${b.bankDetails.ifscCode}', style: pw.TextStyle(font: fontRegular, fontSize: 8.5, color: darkText)),
-                          if (b.bankDetails.upiId.isNotEmpty)
-                            pw.Text('UPI ID: ${b.bankDetails.upiId}', style: pw.TextStyle(font: fontBold, fontSize: 8.5, color: brandPurple)),
-                        ],
-                      ),
                     ),
-                  )
-                else
-                  pw.Spacer(flex: 55),
 
-                pw.SizedBox(width: 16),
-
-                // Right: Totals Breakdown Box
-                pw.Expanded(
-                  flex: 42,
-                  child: pw.Column(
-                    children: [
-                      _buildSummaryRow(
-                        'Total Purchases',
-                        '₹ ${CurrencyFormatter.format(totalPurchases, showSymbol: false)}',
-                        fontRegular: fontRegular,
-                        fontBold: fontBold,
-                      ),
-                      _buildSummaryRow(
-                        'Total Paid / Received',
-                        '₹ ${CurrencyFormatter.format(totalPaid, showSymbol: false)}',
-                        fontRegular: fontRegular,
-                        fontBold: fontBold,
-                      ),
-                      if (totalOverMoney > 0)
-                        _buildSummaryRow(
-                          'Total Over-Payment',
-                          '₹ ${CurrencyFormatter.format(totalOverMoney, showSymbol: false)}',
-                          fontRegular: fontRegular,
-                          fontBold: fontBold,
-                        ),
-                      pw.Container(
-                        color: brandPurple,
-                        padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-                        margin: const pw.EdgeInsets.only(top: 4),
+                    // Sub Total row below item table
+                    pw.Align(
+                      alignment: pw.Alignment.centerRight,
+                      child: pw.Padding(
+                        padding: const pw.EdgeInsets.only(right: 0, top: 3, bottom: 3),
                         child: pw.Row(
-                          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                          mainAxisSize: pw.MainAxisSize.min,
                           children: [
-                            pw.Text(
-                              'Closing Balance',
-                              style: pw.TextStyle(font: fontBold, fontSize: 10.5, color: PdfColors.white),
-                            ),
-                            pw.Text(
-                              balance == 0
-                                  ? '₹ 0.00 (Settled)'
-                                  : '₹ ${CurrencyFormatter.format(balance.abs(), showSymbol: false)} ${balance > 0 ? "Dr (Due)" : "Cr (Advance)"}',
-                              style: pw.TextStyle(font: fontBold, fontSize: 10.5, color: PdfColors.white),
-                            ),
+                            pw.Text('Sub Total: ', style: pw.TextStyle(font: fontRegular, fontSize: 9, color: PdfColors.black)),
+                            pw.Text('₹ ${CurrencyFormatter.format(inv.grandTotal, showSymbol: false)}', style: pw.TextStyle(font: fontRegular, fontSize: 9, color: PdfColors.black)),
                           ],
                         ),
                       ),
-                    ],
-                  ),
-                ),
-              ],
+                    ),
+                  ],
+
+                  // C. Payment Type
+                  if (showPaymentInfo)
+                    pw.Padding(
+                      padding: const pw.EdgeInsets.only(top: 2, bottom: 4),
+                      child: pw.RichText(
+                        text: pw.TextSpan(
+                          children: [
+                            pw.TextSpan(text: 'Payment Type: ', style: pw.TextStyle(font: fontBold, fontSize: 9.5, color: PdfColors.black)),
+                            pw.TextSpan(text: inv.paymentType.isNotEmpty ? inv.paymentType : 'Cash', style: pw.TextStyle(font: fontRegular, fontSize: 9.5, color: PdfColors.black)),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                  // D. Note / Description if requested
+                  if (showDescription && inv.description.isNotEmpty)
+                    pw.Padding(
+                      padding: const pw.EdgeInsets.only(bottom: 4),
+                      child: pw.Text('Note: ${inv.description}', style: pw.TextStyle(font: fontRegular, fontSize: 8.5, color: PdfColor.fromHex('#4B5563'))),
+                    ),
+
+                  pw.SizedBox(height: 2),
+                  pw.Divider(color: PdfColors.black, thickness: 0.8),
+                ],
+              ),
+            );
+          }
+
+          // ─── 6. GRAND TOTAL SUMMARY AT END OF STATEMENT ───
+          contentWidgets.add(pw.SizedBox(height: 20));
+          contentWidgets.add(
+            pw.Text(
+              runningBalance > 0
+                  ? 'Total Receivable balance: ₹ ${CurrencyFormatter.format(runningBalance, showSymbol: false)}'
+                  : (runningBalance < 0
+                      ? 'Total Payable balance: ₹ ${CurrencyFormatter.format(runningBalance.abs(), showSymbol: false)}'
+                      : 'Total Balance: ₹ 0.00 (Settled)'),
+              style: pw.TextStyle(
+                font: fontBold,
+                fontSize: 16,
+                color: PdfColors.black,
+              ),
             ),
-          ];
+          );
+
+          return contentWidgets;
         },
       ),
     );
@@ -1044,15 +991,412 @@ class PdfInvoiceService {
     return pdf.save();
   }
 
-  static pw.Widget _stmtHeader(String text, pw.Font font, {pw.TextAlign align = pw.TextAlign.left}) {
+  // ─── General Ledger & Daybook PDF ──────────────────────────────────────────
+
+  static Future<Uint8List> generateGeneralLedgerPdf({
+    required List<InvoiceModel> invoices,
+    required DateTime fromDate,
+    required DateTime toDate,
+    BusinessModel? business,
+    CustomerModel? specificCustomer,
+    bool showItemDetails = true,
+    bool showPaymentInfo = true,
+    bool showBalance = true,
+    bool showPaymentStatus = true,
+    bool showGrandTotals = true,
+    String reportTitle = 'GENERAL LEDGER & DAYBOOK',
+  }) async {
+    final pdf = pw.Document();
+    final fontRegular = await PdfGoogleFonts.notoSansRegular();
+    final fontBold = await PdfGoogleFonts.notoSansBold();
+    final fontItalic = await PdfGoogleFonts.notoSansItalic();
+
+    final b = business ??
+        (invoices.isNotEmpty
+            ? invoices.first.businessSnapshot
+            : BusinessModel(id: '', businessName: 'JMJ SEA FOODS', phone: '9010966188', email: 'donijoel12345@gmail.com'));
+
+    final logoImage = await _resolveLogoImage(b.logo);
+    final dfmt = DateFormat('dd/MM/yyyy');
+
+    final fromDay = DateTime(fromDate.year, fromDate.month, fromDate.day);
+    final toDay = DateTime(toDate.year, toDate.month, toDate.day, 23, 59, 59);
+
+    final filtered = invoices.where((inv) {
+      final d = inv.invoiceDate;
+      return !d.isBefore(fromDay) && !d.isAfter(toDay);
+    }).toList()
+      ..sort((a, b) => a.invoiceDate.compareTo(b.invoiceDate));
+
+    String formatBillNo(String invoiceNumber) {
+      final trimmed = invoiceNumber.trim();
+      if (trimmed.isEmpty) return '-';
+      if (RegExp(r'^\d+$').hasMatch(trimmed)) {
+        return 'No$trimmed';
+      }
+      return trimmed;
+    }
+
+    String formatQty(double qty) {
+      if (qty.truncateToDouble() == qty) {
+        return qty.toInt().toString();
+      }
+      return qty.toStringAsFixed(2);
+    }
+
+    // Dynamic Column Widths based on options
+    final Map<int, pw.TableColumnWidth> colWidths = {};
+    int colIdx = 0;
+
+    colWidths[colIdx++] = const pw.FixedColumnWidth(54); // Date
+    colWidths[colIdx++] = const pw.FixedColumnWidth(52); // Voucher #
+    colWidths[colIdx++] = const pw.FlexColumnWidth(2.2); // Party Name
+
+    if (showItemDetails) {
+      colWidths[colIdx++] = const pw.FlexColumnWidth(2.5); // Items (Merged with Qty + Unit)
+    }
+
+    colWidths[colIdx++] = const pw.FixedColumnWidth(68); // Bill Total (₹)
+
+    if (showPaymentInfo) {
+      colWidths[colIdx++] = const pw.FixedColumnWidth(64); // Received (₹)
+    }
+
+    if (showBalance) {
+      colWidths[colIdx++] = const pw.FixedColumnWidth(64); // Balance (₹)
+    }
+
+    if (showPaymentStatus) {
+      colWidths[colIdx++] = const pw.FixedColumnWidth(48); // Status
+    }
+
+    double totalBilled = 0.0;
+    double totalPaid = 0.0;
+    double totalDue = 0.0;
+
+    for (final inv in filtered) {
+      totalBilled += inv.grandTotal;
+      totalPaid += inv.amountPaid;
+      totalDue += inv.balanceDue;
+    }
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+        theme: pw.ThemeData.withFont(
+          base: fontRegular,
+          bold: fontBold,
+          italic: fontItalic,
+        ),
+        footer: (ctx) {
+          return pw.Container(
+            alignment: pw.Alignment.center,
+            margin: const pw.EdgeInsets.only(top: 8),
+            child: pw.Text(
+              'Page ${ctx.pageNumber}',
+              style: pw.TextStyle(
+                font: fontRegular,
+                fontSize: 9,
+                color: PdfColor.fromHex('#9CA3AF'),
+              ),
+            ),
+          );
+        },
+        build: (ctx) {
+          final contentWidgets = <pw.Widget>[];
+
+          // ─── 1. TOP HEADER: Logo (Left) + Business Info (Right) ───────────
+          contentWidgets.add(
+            pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                // Left: Company Logo
+                if (logoImage != null)
+                  pw.Container(
+                    width: 75,
+                    height: 50,
+                    alignment: pw.Alignment.centerLeft,
+                    child: pw.Image(logoImage, width: 75, height: 50, fit: pw.BoxFit.contain),
+                  )
+                else
+                  pw.Container(width: 75, height: 50),
+
+                // Right: Business Name & Contact Info
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.end,
+                  children: [
+                    pw.Text(
+                      b.businessName.isNotEmpty ? b.businessName.toUpperCase() : 'JMJ SEA FOODS',
+                      style: pw.TextStyle(
+                        font: fontBold,
+                        fontSize: 16,
+                        color: PdfColors.black,
+                      ),
+                    ),
+                    pw.SizedBox(height: 4),
+                    pw.Row(
+                      mainAxisSize: pw.MainAxisSize.min,
+                      children: [
+                        if (b.phone.isNotEmpty)
+                          pw.Text(
+                            'Phone no.: ${b.phone}  ',
+                            style: pw.TextStyle(font: fontRegular, fontSize: 9, color: PdfColors.black),
+                          ),
+                        if (b.email.isNotEmpty)
+                          pw.Text(
+                            'Email: ${b.email}',
+                            style: pw.TextStyle(font: fontRegular, fontSize: 9, color: PdfColors.black),
+                          ),
+                      ],
+                    ),
+                    if (b.gstin.isNotEmpty)
+                      pw.Text(
+                        'GSTIN: ${b.gstin}',
+                        style: pw.TextStyle(font: fontRegular, fontSize: 9, color: PdfColors.black),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          );
+
+          contentWidgets.add(pw.SizedBox(height: 6));
+          contentWidgets.add(pw.Divider(color: PdfColors.black, thickness: 1.0));
+          contentWidgets.add(pw.SizedBox(height: 12));
+
+          // ─── 2. STATEMENT TITLE & METADATA ────────────────────────────────
+          contentWidgets.add(
+            pw.Center(
+              child: pw.Text(
+                reportTitle,
+                style: pw.TextStyle(
+                  font: fontBold,
+                  fontSize: 18,
+                  color: PdfColors.black,
+                  decoration: pw.TextDecoration.underline,
+                ),
+              ),
+            ),
+          );
+
+          contentWidgets.add(pw.SizedBox(height: 10));
+
+          if (specificCustomer != null) {
+            contentWidgets.add(
+              pw.Text(
+                'Party name: ${specificCustomer.name}',
+                style: pw.TextStyle(font: fontBold, fontSize: 13, color: PdfColors.black),
+              ),
+            );
+            contentWidgets.add(pw.SizedBox(height: 4));
+          }
+
+          contentWidgets.add(
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(
+                  'Duration: From ${dfmt.format(fromDate)} to ${dfmt.format(toDate)}',
+                  style: pw.TextStyle(font: fontBold, fontSize: 11.5, color: PdfColors.black),
+                ),
+                pw.Text(
+                  'Total Entries: ${filtered.length}',
+                  style: pw.TextStyle(font: fontRegular, fontSize: 10, color: PdfColor.fromHex('#4B5563')),
+                ),
+              ],
+            ),
+          );
+
+          contentWidgets.add(pw.SizedBox(height: 10));
+
+          // ─── 3. TABLE HEADER ──────────────────────────────────────────────
+          final List<pw.Widget> headerCells = [
+            _masterHeaderCell('Date', fontBold),
+            _masterHeaderCell('Bill No.', fontBold, align: pw.TextAlign.center),
+            _masterHeaderCell('Party Name', fontBold),
+          ];
+
+          if (showItemDetails) {
+            headerCells.add(_masterHeaderCell('Items (Qty)', fontBold));
+          }
+
+          headerCells.add(_masterHeaderCell('Bill Amt', fontBold, align: pw.TextAlign.right));
+
+          if (showPaymentInfo) {
+            headerCells.add(_masterHeaderCell('Received', fontBold, align: pw.TextAlign.right));
+          }
+
+          if (showBalance) {
+            headerCells.add(_masterHeaderCell('Balance', fontBold, align: pw.TextAlign.right));
+          }
+
+          if (showPaymentStatus) {
+            headerCells.add(_masterHeaderCell('Status', fontBold, align: pw.TextAlign.center));
+          }
+
+          contentWidgets.add(
+            pw.Table(
+              columnWidths: colWidths,
+              children: [
+                pw.TableRow(
+                  decoration: const pw.BoxDecoration(
+                    color: PdfColor.fromInt(0xFFE0E0E0),
+                    border: pw.Border(
+                      top: pw.BorderSide(color: PdfColors.black, width: 0.8),
+                      bottom: pw.BorderSide(color: PdfColors.black, width: 0.8),
+                    ),
+                  ),
+                  children: headerCells,
+                ),
+              ],
+            ),
+          );
+
+          // ─── 4. TABLE DATA ROWS ───────────────────────────────────────────
+          for (final inv in filtered) {
+            final isPaid = inv.status == 'PAID';
+            final isPartial = inv.status == 'PARTIALLY_PAID' || (inv.amountPaid > 0 && inv.balanceDue > 0);
+            final statusStr = isPaid ? 'PAID' : (isPartial ? 'PARTIAL' : 'DUE');
+
+            // Merge item names and quantities with units: e.g. "Crab (5 kg), Prawns (2 kg)"
+            final itemSummary = inv.items.isNotEmpty
+                ? inv.items
+                    .map((it) => '${it.name} (${formatQty(it.quantity)}${it.unit.isNotEmpty ? " ${it.unit}" : ""})')
+                    .join(', ')
+                : '-';
+
+            final List<pw.Widget> rowCells = [
+              _txnCell(dfmt.format(inv.invoiceDate), fontRegular),
+              _txnCell(formatBillNo(inv.invoiceNumber), fontBold, align: pw.TextAlign.center),
+              _txnCell(inv.customerSnapshot.name.isNotEmpty ? inv.customerSnapshot.name : 'Customer', fontBold),
+            ];
+
+            if (showItemDetails) {
+              rowCells.add(
+                pw.Padding(
+                  padding: const pw.EdgeInsets.symmetric(vertical: 3.5, horizontal: 3),
+                  child: pw.Text(
+                    itemSummary,
+                    style: pw.TextStyle(font: fontRegular, fontSize: 8.5, color: PdfColors.black),
+                    maxLines: 2,
+                  ),
+                ),
+              );
+            }
+
+            rowCells.add(
+              _txnCell('₹ ${CurrencyFormatter.format(inv.grandTotal, showSymbol: false)}', fontBold, align: pw.TextAlign.right),
+            );
+
+            if (showPaymentInfo) {
+              rowCells.add(
+                _txnCell('₹ ${CurrencyFormatter.format(inv.amountPaid, showSymbol: false)}', fontRegular, align: pw.TextAlign.right),
+              );
+            }
+
+            if (showBalance) {
+              rowCells.add(
+                _txnCell('₹ ${CurrencyFormatter.format(inv.balanceDue, showSymbol: false)}', fontBold, align: pw.TextAlign.right),
+              );
+            }
+
+            if (showPaymentStatus) {
+              rowCells.add(
+                pw.Padding(
+                  padding: const pw.EdgeInsets.symmetric(vertical: 3.5, horizontal: 2),
+                  child: pw.Text(
+                    statusStr,
+                    textAlign: pw.TextAlign.center,
+                    style: pw.TextStyle(
+                      font: fontBold,
+                      fontSize: 8,
+                      color: isPaid
+                          ? PdfColor.fromHex('#15803D')
+                          : (isPartial ? PdfColor.fromHex('#B45309') : PdfColor.fromHex('#B91C1C')),
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            contentWidgets.add(
+              pw.Table(
+                columnWidths: colWidths,
+                children: [
+                  pw.TableRow(
+                    decoration: const pw.BoxDecoration(
+                      border: pw.Border(
+                        bottom: pw.BorderSide(color: PdfColor.fromInt(0xFFE5E7EB), width: 0.5),
+                      ),
+                    ),
+                    children: rowCells,
+                  ),
+                ],
+              ),
+            );
+          }
+
+          // ─── 5. GRAND TOTALS SUMMARY ──────────────────────────────────────
+          if (showGrandTotals && filtered.isNotEmpty) {
+            contentWidgets.add(pw.SizedBox(height: 14));
+            contentWidgets.add(
+              pw.Container(
+                padding: const pw.EdgeInsets.all(10),
+                decoration: pw.BoxDecoration(
+                  color: const PdfColor.fromInt(0xFFF3F4F6),
+                  border: pw.Border.all(color: const PdfColor.fromInt(0xFFD1D5DB), width: 0.8),
+                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                ),
+                child: pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(
+                      'TOTALS (${filtered.length} Bills)',
+                      style: pw.TextStyle(font: fontBold, fontSize: 10, color: PdfColors.black),
+                    ),
+                    pw.Text(
+                      'Billed: ₹ ${CurrencyFormatter.format(totalBilled, showSymbol: false)}',
+                      style: pw.TextStyle(font: fontBold, fontSize: 10, color: PdfColors.black),
+                    ),
+                    if (showPaymentInfo)
+                      pw.Text(
+                        'Received: ₹ ${CurrencyFormatter.format(totalPaid, showSymbol: false)}',
+                        style: pw.TextStyle(font: fontBold, fontSize: 10, color: PdfColor.fromHex('#15803D')),
+                      ),
+                    if (showBalance)
+                      pw.Text(
+                        'Pending Due: ₹ ${CurrencyFormatter.format(totalDue, showSymbol: false)}',
+                        style: pw.TextStyle(
+                          font: fontBold,
+                          fontSize: 10,
+                          color: totalDue > 0 ? PdfColor.fromHex('#B91C1C') : PdfColor.fromHex('#15803D'),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          return contentWidgets;
+        },
+      ),
+    );
+
+    return pdf.save();
+  }
+
+  static pw.Widget _masterHeaderCell(String text, pw.Font font, {pw.TextAlign align = pw.TextAlign.left}) {
     return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 5),
+      padding: const pw.EdgeInsets.symmetric(vertical: 5, horizontal: 3),
       child: pw.Text(
         text,
         textAlign: align,
         style: pw.TextStyle(
-          color: PdfColors.white,
-          fontSize: 9.5,
+          color: PdfColors.black,
+          fontSize: 9,
           font: font,
           fontWeight: pw.FontWeight.bold,
         ),
@@ -1060,28 +1404,63 @@ class PdfInvoiceService {
     );
   }
 
-  static pw.Widget _stmtCell(
+  static pw.Widget _txnCell(
     String text,
-    pw.Font fontRegular, {
+    pw.Font font, {
     pw.TextAlign align = pw.TextAlign.left,
-    PdfColor? color,
-    bool isBold = false,
-    pw.Font? font,
   }) {
     return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(vertical: 5, horizontal: 5),
+      padding: const pw.EdgeInsets.symmetric(vertical: 3.5, horizontal: 3),
       child: pw.Text(
         text,
         textAlign: align,
         style: pw.TextStyle(
-          font: isBold ? font : fontRegular,
+          font: font,
           fontSize: 9,
+          fontWeight: pw.FontWeight.bold,
+          color: PdfColors.black,
+        ),
+      ),
+    );
+  }
+
+  static pw.Widget _itemHeaderCell(String text, pw.Font font, {pw.TextAlign align = pw.TextAlign.left}) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 3.5, horizontal: 3),
+      child: pw.Text(
+        text,
+        textAlign: align,
+        style: pw.TextStyle(
+          color: PdfColors.black,
+          fontSize: 8.5,
+          font: font,
+          fontWeight: pw.FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  static pw.Widget _itemCell(
+    String text,
+    pw.Font font, {
+    pw.TextAlign align = pw.TextAlign.left,
+    bool isBold = false,
+  }) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 3, horizontal: 3),
+      child: pw.Text(
+        text,
+        textAlign: align,
+        style: pw.TextStyle(
+          font: font,
+          fontSize: 8.5,
           fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
-          color: color ?? PdfColor.fromHex('#1A1A1A'),
+          color: PdfColors.black,
         ),
       ),
     );
   }
 }
+
 
 

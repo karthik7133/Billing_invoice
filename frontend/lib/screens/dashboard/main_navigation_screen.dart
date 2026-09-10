@@ -20,6 +20,7 @@ import '../settings/invoice_print_settings_screen.dart';
 import '../invoices/invoice_history_screen.dart';
 import '../invoices/create_invoice_screen.dart';
 import '../customers/customer_list_screen.dart';
+import '../ledger/ledger_screen.dart';
 
 /// Global key exposing tab-switching capability to nested screens (e.g. ManageCompaniesScreen)
 final mainNavigationKey = GlobalKey<_MainNavigationScreenState>();
@@ -551,9 +552,22 @@ class _AnalyticsDashboardScreen extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               _buildAnalyticsTile(
-                icon: Icons.history_rounded,
+                icon: Icons.menu_book_rounded,
                 iconColor: const Color(0xFF2563EB),
                 iconBg: const Color(0xFFEFF6FF),
+                title: 'Date-Wise Ledger & Daybook',
+                subtitle: 'Track debits, credits, running balance & export editable Excel (.xlsx)',
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const LedgerScreen()),
+                  );
+                },
+              ),
+              const SizedBox(height: 10),
+              _buildAnalyticsTile(
+                icon: Icons.history_rounded,
+                iconColor: const Color(0xFF0284C7),
+                iconBg: const Color(0xFFE0F2FE),
                 title: 'View All Invoices & Sales Records',
                 subtitle: 'Filter by date, payment status, and export PDF',
                 onTap: () {
@@ -775,9 +789,20 @@ class _MenuScreen extends StatelessWidget {
           const SizedBox(height: 18),
           _buildSectionHeader('REPORTS & TRANSACTIONS'),
           _buildMenuTile(
+            icon: Icons.menu_book_rounded,
+            title: 'Date-Wise Ledger & Daybook',
+            subtitle: 'Daybook entries, debit/credit running balances & Excel export',
+            color: const Color(0xFF2563EB),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const LedgerScreen()),
+              );
+            },
+          ),
+          _buildMenuTile(
             icon: Icons.receipt_long_outlined,
             title: 'Sales Reports & All Invoices',
-            subtitle: 'View, filter, export and share sales ledger & PDFs',
+            subtitle: 'View, filter, export and share sales records & PDFs',
             color: const Color(0xFF059669),
             onTap: () {
               Navigator.of(context).push(

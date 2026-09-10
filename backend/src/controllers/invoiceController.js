@@ -250,6 +250,20 @@ const createInvoice = async (req, res) => {
       await business.save();
     }
 
+    // ── Duplicate invoice number check per customer ───────────────────────
+    const existingInvoice = await Invoice.findOne({
+      userId: req.user._id,
+      customerId: customer._id,
+      invoiceNumber: finalInvoiceNumber,
+    });
+    if (existingInvoice) {
+      return res.status(409).json({
+        success: false,
+        message: `Invoice #${finalInvoiceNumber} already exists for customer "${customer.name}". Please use a different invoice number.`,
+      });
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     // Run Calculation Engine
     const calculated = calculateInvoiceTotals({
       items,
@@ -423,7 +437,23 @@ const updateInvoice = async (req, res) => {
     }
 
     if (req.body.invoiceNumber !== undefined && req.body.invoiceNumber !== null) {
-      invoice.invoiceNumber = String(req.body.invoiceNumber).trim();
+      const newNum = String(req.body.invoiceNumber).trim();
+      if (newNum !== invoice.invoiceNumber) {
+        // Check uniqueness for the same customer
+        const existing = await Invoice.findOne({
+          userId: req.user._id,
+          customerId: invoice.customerId,
+          invoiceNumber: newNum,
+          _id: { $ne: invoice._id },
+        });
+        if (existing) {
+          return res.status(409).json({
+            success: false,
+            message: `Invoice #${newNum} already exists for this customer. Please use a different number.`,
+          });
+        }
+      }
+      invoice.invoiceNumber = newNum;
     }
 
     // Recalculate totals if items are updated

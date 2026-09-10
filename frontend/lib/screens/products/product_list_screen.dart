@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/product_model.dart';
 import '../../providers/product_provider.dart';
+import '../../providers/invoice_provider.dart';
 import '../../widgets/product_card.dart';
 import '../../widgets/empty_state_widget.dart';
 import '../../widgets/cloud_server_status_pill.dart';
@@ -17,7 +18,16 @@ class ProductListScreen extends StatefulWidget {
 
 class _ProductListScreenState extends State<ProductListScreen> {
   final TextEditingController _searchController = TextEditingController();
-  String _selectedFilter = 'ALL'; // 'ALL', 'PRODUCT', 'SERVICE'
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final invoiceProvider = Provider.of<InvoiceProvider>(context, listen: false);
+      Provider.of<ProductProvider>(context, listen: false)
+          .syncItemsFromInvoices(invoiceProvider.allInvoices);
+    });
+  }
 
   @override
   void dispose() {
@@ -28,11 +38,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
   @override
   Widget build(BuildContext context) {
     final productProvider = Provider.of<ProductProvider>(context);
-
-    var products = productProvider.products;
-    if (_selectedFilter != 'ALL') {
-      products = products.where((p) => p.itemType == _selectedFilter).toList();
-    }
+    final products = productProvider.products;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -63,7 +69,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
           children: [
             // 1. Search Bar
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
               child: Container(
                 height: 44,
                 decoration: BoxDecoration(
@@ -93,14 +99,11 @@ class _ProductListScreenState extends State<ProductListScreen> {
                         },
                         style: const TextStyle(fontSize: 13.5, color: Color(0xFF1E293B), fontWeight: FontWeight.w500),
                         decoration: const InputDecoration(
-                          hintText: 'Search products by name, HSN/SAC...',
+                          hintText: 'Search items by name...',
                           hintStyle: TextStyle(fontSize: 13, color: Color(0xFF94A3B8), fontWeight: FontWeight.normal),
                           border: InputBorder.none,
                           enabledBorder: InputBorder.none,
                           focusedBorder: InputBorder.none,
-                          errorBorder: InputBorder.none,
-                          disabledBorder: InputBorder.none,
-                          focusedErrorBorder: InputBorder.none,
                           isDense: true,
                           contentPadding: EdgeInsets.symmetric(vertical: 12),
                         ),
@@ -120,32 +123,50 @@ class _ProductListScreenState extends State<ProductListScreen> {
               ),
             ),
 
-            // 2. Filter Chips
+            // Items count banner
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               child: Row(
                 children: [
-                  _buildFilterChip('ALL', 'All Items'),
-                  const SizedBox(width: 8),
-                  _buildFilterChip('PRODUCT', 'Products (Goods)'),
-                  const SizedBox(width: 8),
-                  _buildFilterChip('SERVICE', 'Services'),
+                  Text(
+                    '${products.length} ${products.length == 1 ? "Item" : "Items"} in Catalog',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF64748B)),
+                  ),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (ctx) => const AddEditProductScreen()),
+                      );
+                    },
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.add_circle_outline_rounded, size: 15, color: Color(0xFF2563EB)),
+                        SizedBox(width: 4),
+                        Text(
+                          'Add New Item',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF2563EB)),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
 
-            const SizedBox(height: 6),
+            const SizedBox(height: 4),
 
-            // 3. Products List
+            // 2. Products List
             Expanded(
               child: products.isEmpty
                   ? EmptyStateWidget(
                       icon: Icons.inventory_2_outlined,
                       title: 'No Catalog Items',
                       description: _searchController.text.isNotEmpty
-                          ? 'Try searching with a different product or HSN code'
-                          : 'Add products or services with HSN/SAC and GST rates for 1-click billing.',
-                      buttonText: 'Add Product / Service',
+                          ? 'No items match "${_searchController.text}". Try another name.'
+                          : 'Items added in bills or catalog will appear here with name, rate, and unit.',
+                      buttonText: 'Add New Item',
                       onButtonPressed: () {
                         Navigator.of(context).push(
                           MaterialPageRoute(builder: (ctx) => const AddEditProductScreen()),
@@ -183,41 +204,18 @@ class _ProductListScreenState extends State<ProductListScreen> {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         heroTag: 'addProductFab',
         onPressed: () {
           Navigator.of(context).push(
             MaterialPageRoute(builder: (ctx) => const AddEditProductScreen()),
           );
         },
-        backgroundColor: AppColors.vyaparPink,
+        backgroundColor: const Color(0xFF2563EB),
         foregroundColor: Colors.white,
-        child: const Icon(Icons.add_shopping_cart_rounded),
+        icon: const Icon(Icons.add_rounded),
+        label: const Text('Add Item', style: TextStyle(fontWeight: FontWeight.w700)),
       ),
-    );
-  }
-
-  Widget _buildFilterChip(String filterKey, String label) {
-    final isSelected = _selectedFilter == filterKey;
-    return ChoiceChip(
-      label: Text(label),
-      selected: isSelected,
-      selectedColor: const Color(0xFFEFF6FF),
-      backgroundColor: Colors.white,
-      side: BorderSide(
-        color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0),
-        width: 1,
-      ),
-      labelStyle: TextStyle(
-        fontSize: 12,
-        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-        color: isSelected ? const Color(0xFF2563EB) : const Color(0xFF64748B),
-      ),
-      onSelected: (val) {
-        setState(() {
-          _selectedFilter = filterKey;
-        });
-      },
     );
   }
 
@@ -226,8 +224,8 @@ class _ProductListScreenState extends State<ProductListScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Delete Product?', style: TextStyle(fontWeight: FontWeight.w800)),
-        content: Text('Are you sure you want to delete "${product.name}"?'),
+        title: const Text('Delete Item?', style: TextStyle(fontWeight: FontWeight.w800)),
+        content: Text('Are you sure you want to delete "${product.name}" from catalog?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -240,7 +238,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('Product "${product.name}" deleted'),
+                  content: Text('Item "${product.name}" deleted'),
                   behavior: SnackBarBehavior.floating,
                 ),
               );

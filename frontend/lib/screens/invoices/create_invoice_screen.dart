@@ -6,13 +6,14 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/constants/app_colors.dart';
-import '../../core/constants/gst_rates.dart';
+
 import '../../core/utils/currency_formatter.dart';
 import '../../models/customer_model.dart';
 import '../../models/invoice_model.dart';
 import '../../providers/business_provider.dart';
 import '../../providers/customer_provider.dart';
 import '../../providers/invoice_provider.dart';
+import '../../providers/product_provider.dart';
 import 'invoice_detail_screen.dart';
 
 class CreateInvoiceScreen extends StatefulWidget {
@@ -95,6 +96,9 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
   final List<XFile> _attachedImages = [];
   final ImagePicker _imagePicker = ImagePicker();
 
+  // Tracks all item names + details ever entered — used for autocomplete suggestions
+  final Map<String, _SaleItemDraft> _knownItemDetails = {};
+
   @override
   void initState() {
     super.initState();
@@ -103,10 +107,27 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
 
     final businessProvider = Provider.of<BusinessProvider>(context, listen: false);
     final business = businessProvider.business;
+    final invoiceProvider = Provider.of<InvoiceProvider>(context, listen: false);
 
-    final defaultInvoiceNo = widget.existingInvoice != null
-        ? widget.existingInvoice!.invoiceNumber
-        : '${business.nextInvoiceNumber > 0 ? business.nextInvoiceNumber : 1}';
+    // Auto-increment: find the next unused integer invoice number
+    String defaultInvoiceNo;
+    if (widget.existingInvoice != null) {
+      defaultInvoiceNo = widget.existingInvoice!.invoiceNumber;
+    } else {
+      // Collect all numeric-looking invoice numbers already used
+      final usedNumbers = <int>{};
+      for (final inv in invoiceProvider.allInvoices) {
+        final raw = inv.invoiceNumber.replaceAll(RegExp(r'[^0-9]'), '');
+        final n = int.tryParse(raw);
+        if (n != null) usedNumbers.add(n);
+      }
+      // Find next number starting from max+1 or business default
+      int next = business.nextInvoiceNumber > 0 ? business.nextInvoiceNumber : 1;
+      while (usedNumbers.contains(next)) {
+        next++;
+      }
+      defaultInvoiceNo = '$next';
+    }
 
     _invoiceNoController = TextEditingController(text: defaultInvoiceNo);
     _descriptionController = TextEditingController(text: widget.existingInvoice?.description ?? '');
@@ -119,20 +140,23 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
       _phoneController = TextEditingController(text: _selectedCustomer?.phone ?? '');
 
       for (final it in widget.existingInvoice!.items) {
-        _items.add(
-          _SaleItemDraft(
-            productId: it.productId,
-            name: it.name,
-            description: it.description,
-            hsnSac: it.hsnSac,
-            unit: it.unit,
-            quantity: it.quantity,
-            rate: it.rate,
-            discount: it.discount,
-            discountType: it.discountType,
-            gstRate: it.gstRate,
-          ),
+        final draft = _SaleItemDraft(
+          productId: it.productId,
+          name: it.name,
+          description: it.description,
+          hsnSac: it.hsnSac,
+          unit: it.unit,
+          quantity: it.quantity,
+          rate: it.rate,
+          discount: it.discount,
+          discountType: it.discountType,
+          gstRate: it.gstRate,
         );
+        _items.add(draft);
+        // Pre-populate autocomplete map from existing invoice items
+        if (it.name.trim().isNotEmpty) {
+          _knownItemDetails[it.name.trim().toLowerCase()] = draft;
+        }
       }
       _receivedAmountController = TextEditingController(
         text: widget.existingInvoice!.amountPaid > 0 ? widget.existingInvoice!.amountPaid.toStringAsFixed(2) : '',
@@ -704,6 +728,34 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
       }
     }
 
+    // ── Duplicate invoice number check per customer ───────────────────────
+    final finalInvoiceNo = _buildFinalInvoiceNo();
+    final isEditing = widget.existingInvoice != null;
+    final duplicate = invProvider.allInvoices.any((inv) {
+      final sameNum = inv.invoiceNumber.trim().toLowerCase() == finalInvoiceNo.trim().toLowerCase();
+      final sameCust = inv.customerId == customer.id ||
+          inv.customerSnapshot.name.toLowerCase() == customer.name.toLowerCase();
+      // When editing, exclude the current invoice from the check
+      final isSelf = isEditing && inv.invoiceNumber == widget.existingInvoice!.invoiceNumber;
+      return sameNum && sameCust && !isSelf;
+    });
+
+    if (duplicate) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Invoice #$finalInvoiceNo already exists for ${customer.name}. Please use a different number.',
+            ),
+            backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+      return;
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     final rawItems = _items.map((it) => it.toMap()).toList();
     final receivedInput = double.tryParse(_receivedAmountController.text.trim()) ?? 0.0;
     final amountPaid = _isReceivedChecked ? receivedInput : 0.0;
@@ -733,19 +785,35 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
       }
     }
 
-    final invoice = await invProvider.createInvoice(
-      customer: customer,
-      business: busProvider.business,
-      rawItems: rawItems,
-      invoiceNumber: _buildFinalInvoiceNo(),
-      invoiceDate: _invoiceDate,
-      origin: _selectedOrigin,
-      attachments: uploadedUrls,
-      amountPaid: amountPaid,
-      paymentType: _paymentType,
-      description: _descriptionController.text.trim(),
-      termsAndConditions: _termsAndConditions,
-    );
+    InvoiceModel invoice;
+    try {
+      invoice = await invProvider.createInvoice(
+        customer: customer,
+        business: busProvider.business,
+        rawItems: rawItems,
+        invoiceNumber: finalInvoiceNo,
+        invoiceDate: _invoiceDate,
+        origin: _selectedOrigin,
+        attachments: uploadedUrls,
+        amountPaid: amountPaid,
+        paymentType: _paymentType,
+        description: _descriptionController.text.trim(),
+        termsAndConditions: _termsAndConditions,
+      );
+    } catch (e) {
+      // Handle duplicate invoice number error (409 from backend)
+      if (mounted) {
+        final msg = e.toString().replaceFirst('Exception: ', '');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(msg),
+            backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+      return;
+    }
 
     // Refresh customers so balance is updated dynamically
     await custProvider.fetchCustomers();
@@ -1254,7 +1322,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                     ],
                   ),
 
-                  // Extra Over Money Banner
+                  // O/D Banner
                   if (overMoney > 0) ...[
                     const SizedBox(height: 10),
                     Container(
@@ -1272,7 +1340,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                               Icon(Icons.info_outline, size: 16, color: Color(0xFF2563EB)),
                               SizedBox(width: 6),
                               Text(
-                                'Over Due (Extra / Advance Paid):',
+                                'O/D',
                                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF1E3A8A)),
                               ),
                             ],
@@ -1652,7 +1720,6 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
   }
 
   void _showEditItemDialog(_SaleItemDraft draft, int index) {
-    final nameCtrl = TextEditingController(text: draft.name);
     final qtyCtrl = TextEditingController(
       text: draft.quantity > 0 ? draft.quantity.toStringAsFixed(draft.quantity.truncateToDouble() == draft.quantity ? 0 : 2) : '1',
     );
@@ -1661,7 +1728,54 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     );
     final unitCtrl = TextEditingController(text: draft.unit);
     final discCtrl = TextEditingController(text: draft.discount > 0 ? draft.discount.toStringAsFixed(0) : '0');
-    double selectedGst = draft.gstRate;
+    // For autocomplete
+    final nameTextCtrl = TextEditingController(text: draft.name);
+    final nameFocusNode = FocusNode();
+
+    // Build global item name suggestions from Product Catalog + ALL invoices + session
+    final invoiceProvider = Provider.of<InvoiceProvider>(context, listen: false);
+    final productProvider = Provider.of<ProductProvider>(context, listen: false);
+    final Set<String> globalItemNames = {};
+    final Map<String, _SaleItemDraft> globalItemDetails = {};
+
+    // 1. From Product & Service Catalog
+    for (final p in productProvider.products) {
+      final key = p.name.trim().toLowerCase();
+      if (key.isNotEmpty) {
+        globalItemNames.add(key);
+        globalItemDetails[key] = _SaleItemDraft(
+          name: p.name.trim(),
+          unit: p.unit.isNotEmpty ? p.unit : 'Kg',
+          rate: p.price,
+          discount: 0,
+          discountType: 'PERCENT',
+          gstRate: 0,
+        );
+      }
+    }
+
+    // 2. From all past invoices
+    for (final inv in invoiceProvider.allInvoices) {
+      for (final it in inv.items) {
+        final key = it.name.trim().toLowerCase();
+        if (key.isNotEmpty && !globalItemNames.contains(key)) {
+          globalItemNames.add(key);
+          globalItemDetails[key] = _SaleItemDraft(
+            name: it.name.trim(),
+            unit: it.unit,
+            rate: it.rate,
+            discount: it.discount,
+            discountType: it.discountType,
+            gstRate: it.gstRate,
+          );
+        }
+      }
+    }
+    // 3. Also merge locally tracked items (for current session items)
+    for (final entry in _knownItemDetails.entries) {
+      globalItemDetails.putIfAbsent(entry.key, () => entry.value);
+      globalItemNames.add(entry.key);
+    }
 
     showModalBottomSheet(
       context: context,
@@ -1670,125 +1784,204 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheetState) => Padding(
-          padding: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            top: 16,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                index == -1 ? 'Add Item to Sale' : 'Edit Item',
-                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: nameCtrl,
-                autofocus: index == -1,
-                decoration: const InputDecoration(labelText: 'Item Name *', hintText: 'e.g. Fish, Crab, Service...', border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: qtyCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(labelText: 'Quantity', border: OutlineInputBorder()),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 90,
-                    child: TextField(
-                      controller: unitCtrl,
-                      decoration: const InputDecoration(labelText: 'Unit (Kg/PCS)', border: OutlineInputBorder()),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      controller: rateCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(labelText: 'Rate (₹)', hintText: '0.00', border: OutlineInputBorder()),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: discCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(labelText: 'Discount (%)', border: OutlineInputBorder()),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: DropdownButtonFormField<double>(
-                      initialValue: selectedGst,
-                      decoration: const InputDecoration(labelText: 'GST Rate', border: OutlineInputBorder()),
-                      items: GstRates.standardRates.map((r) {
-                        return DropdownMenuItem(value: r, child: Text('${r.toInt()}%'));
-                      }).toList(),
-                      onChanged: (v) {
-                        if (v != null) setSheetState(() => selectedGst = v);
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1E88E5),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  ),
-                  onPressed: () {
-                    final name = nameCtrl.text.trim();
-                    if (name.isEmpty) return;
-                    final q = double.tryParse(qtyCtrl.text.trim()) ?? 1.0;
-                    final r = double.tryParse(rateCtrl.text.trim()) ?? 0.0;
-                    final d = double.tryParse(discCtrl.text.trim()) ?? 0.0;
-                    final u = unitCtrl.text.trim().isNotEmpty ? unitCtrl.text.trim() : 'Kg';
+        builder: (ctx, setSheetState) {
+          // Helper to auto-fill from global item details
+          void applyKnownItem(String name) {
+            final key = name.trim().toLowerCase();
+            final known = globalItemDetails[key];
+            if (known != null) {
+              rateCtrl.text = known.rate > 0
+                  ? known.rate.toStringAsFixed(known.rate.truncateToDouble() == known.rate ? 0 : 2)
+                  : rateCtrl.text;
+              unitCtrl.text = known.unit.isNotEmpty ? known.unit : unitCtrl.text;
+              discCtrl.text = known.discount > 0 ? known.discount.toStringAsFixed(0) : discCtrl.text;
+            }
+          }
 
-                    final newItem = _SaleItemDraft(
-                      name: name,
-                      quantity: q,
-                      rate: r,
-                      unit: u,
-                      discount: d,
-                      discountType: 'PERCENT',
-                      gstRate: selectedGst,
-                    );
-
-                    setState(() {
-                      if (index == -1) {
-                        _items.add(newItem);
-                      } else {
-                        _items[index] = newItem;
-                      }
-                      if (_isReceivedChecked) {
-                        _receivedAmountController.text = _computeTotal().toStringAsFixed(2);
-                      }
-                    });
-                    Navigator.pop(ctx);
-                  },
-                  child: Text(index == -1 ? 'Add to Bill' : 'Update Item', style: const TextStyle(fontWeight: FontWeight.w700)),
+          return Padding(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 16,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  index == -1 ? 'Add Item to Sale' : 'Edit Item',
+                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
                 ),
-              ),
-            ],
-          ),
-        ),
+                const SizedBox(height: 14),
+
+                // ── Autocomplete Item Name (Global — from all past invoices) ──
+                RawAutocomplete<String>(
+                  textEditingController: nameTextCtrl,
+                  focusNode: nameFocusNode,
+                  optionsBuilder: (TextEditingValue textValue) {
+                    final q = textValue.text.trim().toLowerCase();
+                    // Show ALL known names if empty, or filter by query
+                    final matches = q.isEmpty
+                        ? globalItemNames.map((k) => globalItemDetails[k]!.name).toList()
+                        : globalItemNames
+                            .where((k) => k.contains(q))
+                            .map((k) => globalItemDetails[k]!.name)
+                            .toList();
+                    matches.sort();
+                    return matches.take(8);
+                  },
+                  onSelected: (String selectedName) {
+                    nameTextCtrl.text = selectedName;
+                    applyKnownItem(selectedName);
+                  },
+                  fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+                    return TextField(
+                      controller: controller,
+                      focusNode: focusNode,
+                      autofocus: index == -1,
+                      decoration: const InputDecoration(
+                        labelText: 'Item Name *',
+                        hintText: 'e.g. Fish, Crab, Service...',
+                        border: OutlineInputBorder(),
+                        suffixIcon: Icon(Icons.arrow_drop_down, color: Color(0xFF2563EB)),
+                      ),
+                      onSubmitted: (_) => onFieldSubmitted(),
+                    );
+                  },
+                  optionsViewBuilder: (context, onSelected, options) {
+                    return Align(
+                      alignment: Alignment.topLeft,
+                      child: Material(
+                        elevation: 6,
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          constraints: const BoxConstraints(maxHeight: 220),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                          ),
+                          child: ListView(
+                            padding: EdgeInsets.zero,
+                            shrinkWrap: true,
+                            children: options.map((option) {
+                              return InkWell(
+                                onTap: () => onSelected(option),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.inventory_2_outlined, size: 15, color: Color(0xFF2563EB)),
+                                      const SizedBox(width: 10),
+                                      Text(
+                                        option,
+                                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                // ─────────────────────────────────────────────────────────────
+
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: qtyCtrl,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: const InputDecoration(labelText: 'Quantity', border: OutlineInputBorder()),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 90,
+                      child: TextField(
+                        controller: unitCtrl,
+                        decoration: const InputDecoration(labelText: 'Unit (Kg/PCS)', border: OutlineInputBorder()),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: rateCtrl,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: const InputDecoration(labelText: 'Rate (₹)', hintText: '0.00', border: OutlineInputBorder()),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: discCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Discount (%)', border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1E88E5),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    onPressed: () {
+                      final name = nameTextCtrl.text.trim();
+                      if (name.isEmpty) return;
+                      final q = double.tryParse(qtyCtrl.text.trim()) ?? 1.0;
+                      final r = double.tryParse(rateCtrl.text.trim()) ?? 0.0;
+                      final d = double.tryParse(discCtrl.text.trim()) ?? 0.0;
+                      final u = unitCtrl.text.trim().isNotEmpty ? unitCtrl.text.trim() : 'Kg';
+
+                      final newItem = _SaleItemDraft(
+                        name: name,
+                        quantity: q,
+                        rate: r,
+                        unit: u,
+                        discount: d,
+                        discountType: 'PERCENT',
+                        gstRate: 0.0,
+                      );
+
+                      setState(() {
+                        if (index == -1) {
+                          _items.add(newItem);
+                        } else {
+                          _items[index] = newItem;
+                        }
+                        // Save to known items for future autocomplete in this session
+                        _knownItemDetails[name.toLowerCase()] = newItem;
+                        if (_isReceivedChecked) {
+                          _receivedAmountController.text = _computeTotal().toStringAsFixed(2);
+                        }
+                      });
+
+                      // Automatically store into Product & Service Catalog for later purpose & suggestions
+                      try {
+                        productProvider.addOrUpdateItem(
+                          name: name,
+                          price: r,
+                          unit: u,
+                        );
+                      } catch (_) {}
+                      Navigator.pop(ctx);
+                    },
+                    child: Text(index == -1 ? 'Add to Bill' : 'Update Item', style: const TextStyle(fontWeight: FontWeight.w700)),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

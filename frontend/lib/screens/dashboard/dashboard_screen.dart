@@ -22,6 +22,7 @@ import '../invoices/create_invoice_screen.dart';
 import '../invoices/invoice_detail_screen.dart';
 import '../invoices/invoice_history_screen.dart';
 import '../invoices/invoice_pdf_preview_screen.dart';
+import '../ledger/ledger_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -186,6 +187,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       ),
       actions: [
+        IconButton(
+          icon: const Icon(Icons.menu_book_rounded, color: Color(0xFF2563EB), size: 21),
+          tooltip: 'Ledger & Daybook',
+          onPressed: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const LedgerScreen()),
+            );
+          },
+        ),
         const CloudServerStatusPill(compact: true),
         const SizedBox(width: 4),
         IconButton(
@@ -356,15 +366,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: _selectedTab == 1
                 ? [
                     _buildQuickLinkItem(
-                      icon: Icons.people_outline_rounded,
+                      icon: Icons.menu_book_rounded,
                       iconBg: const Color(0xFFEFF6FF),
                       iconColor: const Color(0xFF2563EB),
-                      label: 'All Parties',
+                      label: 'Daybook',
                       onTap: () {
-                        setState(() {
-                          _searchController.clear();
-                          _searchQuery = '';
-                        });
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const LedgerScreen()),
+                        );
                       },
                     ),
                     _buildQuickLinkItem(
@@ -417,9 +426,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       },
                     ),
                     _buildQuickLinkItem(
-                      icon: Icons.analytics_outlined,
+                      icon: Icons.menu_book_rounded,
                       iconBg: const Color(0xFFEFF6FF),
-                      iconColor: const Color(0xFF0284C7),
+                      iconColor: const Color(0xFF2563EB),
+                      label: 'Ledger',
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const LedgerScreen()),
+                        );
+                      },
+                    ),
+                    _buildQuickLinkItem(
+                      icon: Icons.analytics_outlined,
+                      iconBg: const Color(0xFFF0FDF4),
+                      iconColor: const Color(0xFF16A34A),
                       label: 'Sale Report',
                       onTap: () {
                         Navigator.of(context).push(
@@ -428,20 +448,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       },
                     ),
                     _buildQuickLinkItem(
-                      icon: Icons.settings_outlined,
+                      icon: Icons.history_rounded,
                       iconBg: const Color(0xFFF8FAFC),
                       iconColor: const Color(0xFF475569),
-                      label: 'Settings',
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const BusinessProfileScreen()),
-                        );
-                      },
-                    ),
-                    _buildQuickLinkItem(
-                      icon: Icons.history_rounded,
-                      iconBg: const Color(0xFFF0FDF4),
-                      iconColor: const Color(0xFF16A34A),
                       label: 'History',
                       onTap: () {
                         Navigator.of(context).push(
@@ -687,12 +696,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text(
-                      CurrencyFormatter.format(balanceAbs),
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: isReceivable ? AppColors.receivableGreen : AppColors.payableRed,
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        CurrencyFormatter.format(balanceAbs),
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: isReceivable ? AppColors.receivableGreen : AppColors.payableRed,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -861,40 +874,58 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('Total Amount', style: TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8), fontWeight: FontWeight.w500)),
-                            const SizedBox(height: 1),
-                            Text(
-                              CurrencyFormatter.format(inv.grandTotal),
-                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Flexible(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Total Amount', style: TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8), fontWeight: FontWeight.w500)),
+                                const SizedBox(height: 1),
+                                FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    CurrencyFormatter.format(inv.grandTotal),
+                                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                        const SizedBox(width: 22),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('Balance Due', style: TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8), fontWeight: FontWeight.w500)),
-                            const SizedBox(height: 1),
-                            Text(
-                              CurrencyFormatter.format(inv.balanceDue),
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w800,
-                                color: inv.balanceDue > 0 ? AppColors.payableRed : const Color(0xFF0F172A),
-                              ),
+                          ),
+                          const SizedBox(width: 14),
+                          Flexible(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Balance Due', style: TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8), fontWeight: FontWeight.w500)),
+                                const SizedBox(height: 1),
+                                FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    CurrencyFormatter.format(inv.balanceDue),
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w800,
+                                      color: inv.balanceDue > 0 ? AppColors.payableRed : const Color(0xFF0F172A),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                      ],
+                          ),
+                        ],
+                      ),
                     ),
+                    const SizedBox(width: 6),
                     Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
+                          padding: const EdgeInsets.all(6),
+                          constraints: const BoxConstraints(),
                           icon: const Icon(Icons.print_outlined, size: 20, color: Color(0xFF64748B)),
                           onPressed: () {
                             Navigator.of(context).push(
@@ -903,20 +934,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           },
                           tooltip: 'Print / PDF',
                         ),
+                        const SizedBox(width: 4),
                         IconButton(
+                          padding: const EdgeInsets.all(6),
+                          constraints: const BoxConstraints(),
                           icon: const Icon(Icons.share_outlined, size: 20, color: Color(0xFF64748B)),
                           onPressed: () async {
                             PdfProgressDialog.show(context, message: 'Preparing Invoice PDF...');
                             try {
                               final bytes = await PdfInvoiceService.generateTaxInvoicePdf(inv);
+                              PdfProgressDialog.hide();
                               await ShareService.sharePdf(bytes, filename: 'Invoice_${inv.invoiceNumber}.pdf');
-                            } finally {
+                            } catch (e) {
                               PdfProgressDialog.hide();
                             }
                           },
                           tooltip: 'Share',
                         ),
+                        const SizedBox(width: 4),
                         PopupMenuButton<String>(
+                          padding: const EdgeInsets.all(6),
+                          constraints: const BoxConstraints(),
                           icon: const Icon(Icons.more_vert, size: 20, color: Color(0xFF64748B)),
                           onSelected: (action) {
                             if (action == 'mark_paid') {
