@@ -64,14 +64,15 @@ class ProductProvider with ChangeNotifier {
     // Make sure cache and invoice items are loaded first
     await _loadCache();
 
-    _isLoading = true;
-    notifyListeners();
+    if (_api.token != null && _api.token!.isNotEmpty) {
+      _isLoading = true;
+      notifyListeners();
 
-    try {
-      final res = await _api.get(Endpoints.products);
-      _isLoading = false;
+      try {
+        final res = await _api.get(Endpoints.products);
+        _isLoading = false;
 
-      if (res.success && res.data != null && res.data['products'] != null) {
+        if (res.success && res.data != null && res.data['products'] != null) {
         final serverList = (res.data['products'] as List)
             .map((p) => ProductModel.fromJson(p as Map<String, dynamic>))
             .toList();
@@ -100,6 +101,7 @@ class ProductProvider with ChangeNotifier {
     } catch (_) {
       _isLoading = false;
     }
+  }
 
     // Always re-ensure any invoice items are preserved in the catalog
     try {
@@ -153,9 +155,6 @@ class ProductProvider with ChangeNotifier {
         _products.add(localProd);
         existingNames.add(key);
         addedAny = true;
-
-        // Post to server silently in background
-        _pushToServer(localProd);
       }
     }
 
@@ -167,6 +166,7 @@ class ProductProvider with ChangeNotifier {
 
   /// Silently pushes a product to the server, updates the local id with server id if successful.
   Future<void> _pushToServer(ProductModel product) async {
+    if (_api.token == null || _api.token!.isEmpty) return;
     try {
       final res = await _api.post(Endpoints.products, {
         'name': product.name,

@@ -30,6 +30,7 @@ class BackendSyncService with ChangeNotifier {
   Timer? _retryTimer;
   int _warmupAttemptCount = 0;
   final List<VoidCallback> _onAwakeCallbacks = [];
+  Completer<bool>? _activeHealthCheck;
 
   ServerStatus get status => _status;
   bool get isSyncing => _isSyncing;
@@ -65,15 +66,23 @@ class BackendSyncService with ChangeNotifier {
 
   /// Pings /api/health with automatic retry loop for Render cold starts
   Future<bool> _checkHealth({bool isSilentHeartbeat = false}) async {
+    // If a check is already in-flight, return the existing future to avoid socket flooding
+    if (_activeHealthCheck != null && !_activeHealthCheck!.isCompleted) {
+      return _activeHealthCheck!.future;
+    }
+
     if (!isSilentHeartbeat && _status != ServerStatus.online) {
       _status = _warmupAttemptCount > 0 ? ServerStatus.wakingUp : ServerStatus.connecting;
       notifyListeners();
     }
 
+    final completer = Completer<bool>();
+    _activeHealthCheck = completer;
+
     try {
       final response = await http
           .get(Uri.parse(Endpoints.health))
-          .timeout(const Duration(seconds: 15));
+          .timeout(const Duration(seconds: 35));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         debugPrint('[BackendSync] Render backend is ONLINE! (Attempt ${_warmupAttemptCount + 1})');
@@ -86,6 +95,8 @@ class BackendSyncService with ChangeNotifier {
         if (wasNotOnline) {
           _triggerOnAwake();
         }
+        completer.complete(true);
+        _activeHealthCheck = null;
         return true;
       } else {
         throw Exception('Health check returned status ${response.statusCode}');
@@ -99,10 +110,12 @@ class BackendSyncService with ChangeNotifier {
         notifyListeners();
       }
 
-      // Schedule next retry with rapid frequency (every 3 seconds up to 15 attempts, then 10s)
+      // Schedule next retry with rapid frequency (every 4 seconds up to 15 attempts, then 10s)
       _retryTimer?.cancel();
-      final retryDelay = _warmupAttemptCount < 15 ? const Duration(seconds: 3) : const Duration(seconds: 10);
+      final retryDelay = _warmupAttemptCount < 15 ? const Duration(seconds: 4) : const Duration(seconds: 10);
       _retryTimer = Timer(retryDelay, () => _checkHealth());
+      completer.complete(false);
+      _activeHealthCheck = null;
       return false;
     }
   }
@@ -153,6 +166,11 @@ class BackendSyncService with ChangeNotifier {
     InvoiceProvider? invoiceProvider,
     AuthProvider? authProvider,
   }) async {
+    final token = ApiClient().token;
+    if (token == null || token.isEmpty) {
+      debugPrint('[BackendSync] No auth token present. Skipping authenticated provider fetches.');
+      return;
+    }
     try {
       // ── Step 1: Fetch business profile FIRST ─────────────────────────────────
       if (businessProvider != null) {
