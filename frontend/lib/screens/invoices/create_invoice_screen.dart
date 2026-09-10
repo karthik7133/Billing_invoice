@@ -818,6 +818,14 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     // Refresh customers so balance is updated dynamically
     await custProvider.fetchCustomers();
 
+    // Ensure all items in this sale are immediately synced to Product Catalog
+    if (mounted) {
+      try {
+        final prodProvider = Provider.of<ProductProvider>(context, listen: false);
+        await prodProvider.syncItemsFromInvoices([invoice]);
+      } catch (_) {}
+    }
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

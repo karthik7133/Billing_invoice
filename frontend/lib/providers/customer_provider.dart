@@ -29,14 +29,21 @@ class CustomerProvider with ChangeNotifier {
     _customers = [];
     _isInitialized = false;
     notifyListeners();
+    _initFromCache();
   }
 
   Future<void> _initFromCache() async {
     if (_isInitialized) return;
     final cached = await _cache.loadCustomers(companyId: _activeCompanyId);
-    if (cached.isNotEmpty && _customers.isEmpty) {
+    if (cached.isNotEmpty) {
       _customers = cached;
       notifyListeners();
+    } else {
+      final all = await _cache.loadAllCustomers();
+      if (all.isNotEmpty && _customers.isEmpty) {
+        _customers = all;
+        notifyListeners();
+      }
     }
     _isInitialized = true;
   }

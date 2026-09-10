@@ -26,10 +26,11 @@ class _ProductListScreenState extends State<ProductListScreen> {
       if (!mounted) return;
       final invoiceProvider = Provider.of<InvoiceProvider>(context, listen: false);
       final productProvider = Provider.of<ProductProvider>(context, listen: false);
-      // Fetch from server first, then sync any invoice items that aren't catalogued yet
-      await productProvider.fetchProducts();
+      // Immediately sync local items from invoices & cache with 0ms delay!
+      await productProvider.syncItemsFromInvoices(invoiceProvider.allInvoices);
+      // Then asynchronously fetch from server in background without blocking
       if (mounted) {
-        await productProvider.syncItemsFromInvoices(invoiceProvider.allInvoices);
+        productProvider.fetchProducts();
       }
     });
   }
@@ -57,6 +58,24 @@ class _ProductListScreenState extends State<ProductListScreen> {
         actions: [
           const CloudServerStatusPill(compact: true),
           IconButton(
+            icon: const Icon(Icons.sync_rounded, color: Color(0xFF64748B)),
+            onPressed: () async {
+              final invoiceProvider = Provider.of<InvoiceProvider>(context, listen: false);
+              await productProvider.syncItemsFromInvoices(invoiceProvider.allInvoices);
+              productProvider.fetchProducts();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Catalog synced with bills'),
+                    behavior: SnackBarBehavior.floating,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              }
+            },
+            tooltip: 'Sync Items from Bills',
+          ),
+          IconButton(
             icon: const Icon(Icons.add_box_outlined, color: Color(0xFF2563EB)),
             onPressed: () {
               Navigator.of(context).push(
@@ -69,7 +88,11 @@ class _ProductListScreenState extends State<ProductListScreen> {
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: () => productProvider.fetchProducts(),
+        onRefresh: () async {
+          final invoiceProvider = Provider.of<InvoiceProvider>(context, listen: false);
+          await productProvider.syncItemsFromInvoices(invoiceProvider.allInvoices);
+          await productProvider.fetchProducts();
+        },
         child: Column(
           children: [
             // 1. Search Bar
@@ -164,20 +187,22 @@ class _ProductListScreenState extends State<ProductListScreen> {
 
             // 2. Products List
             Expanded(
-              child: products.isEmpty
-                  ? EmptyStateWidget(
-                      icon: Icons.inventory_2_outlined,
-                      title: 'No Catalog Items',
-                      description: _searchController.text.isNotEmpty
-                          ? 'No items match "${_searchController.text}". Try another name.'
-                          : 'Items added in bills or catalog will appear here with name, rate, and unit.',
-                      buttonText: 'Add New Item',
-                      onButtonPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(builder: (ctx) => const AddEditProductScreen()),
-                        );
-                      },
-                    )
+              child: productProvider.isLoading && products.isEmpty
+                  ? const Center(child: CircularProgressIndicator())
+                  : products.isEmpty
+                      ? EmptyStateWidget(
+                          icon: Icons.inventory_2_outlined,
+                          title: 'No Catalog Items',
+                          description: _searchController.text.isNotEmpty
+                              ? 'No items match "${_searchController.text}". Try another name.'
+                              : 'Items added in bills or catalog will appear here with name, rate, and unit.',
+                          buttonText: 'Add New Item',
+                          onButtonPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(builder: (ctx) => const AddEditProductScreen()),
+                            );
+                          },
+                        )
                   : ListView.builder(
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                       itemCount: products.length,

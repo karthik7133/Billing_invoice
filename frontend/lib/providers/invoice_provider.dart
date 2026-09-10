@@ -39,14 +39,21 @@ class InvoiceProvider with ChangeNotifier {
     _invoices = [];
     _isInitialized = false;
     notifyListeners();
+    _initFromCache();
   }
 
   Future<void> _initFromCache() async {
     if (_isInitialized) return;
     final cached = await _cache.loadInvoices(companyId: _activeCompanyId);
-    if (cached.isNotEmpty && _invoices.isEmpty) {
+    if (cached.isNotEmpty) {
       _invoices = cached;
       notifyListeners();
+    } else {
+      final all = await _cache.loadAllInvoices();
+      if (all.isNotEmpty && _invoices.isEmpty) {
+        _invoices = all;
+        notifyListeners();
+      }
     }
     _isInitialized = true;
   }

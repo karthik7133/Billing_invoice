@@ -43,12 +43,45 @@ class LocalCacheService {
   Future<List<CustomerModel>> loadCustomers({String companyId = ''}) async {
     try {
       await init();
-      final raw = _prefs?.getString(_customerKey(companyId));
+      String? raw = _prefs?.getString(_customerKey(companyId));
+      if ((raw == null || raw.isEmpty) && companyId.isNotEmpty) {
+        raw = _prefs?.getString(_keyCustomers);
+      }
       if (raw == null || raw.isEmpty) return [];
       final list = json.decode(raw) as List<dynamic>;
       return list.map((c) => CustomerModel.fromJson(c as Map<String, dynamic>)).toList();
     } catch (e) {
       debugPrint('[LocalCache] Error loading customers: $e');
+      return [];
+    }
+  }
+
+  /// Loads all customers across all company scopes and legacy cache
+  Future<List<CustomerModel>> loadAllCustomers() async {
+    try {
+      await init();
+      final keys = _prefs?.getKeys() ?? <String>{};
+      final customerKeys = keys.where((k) => k.startsWith(_keyCustomers)).toSet();
+      if (_prefs?.containsKey(_keyCustomers) == true) {
+        customerKeys.add(_keyCustomers);
+      }
+      final Map<String, CustomerModel> byId = {};
+      for (final k in customerKeys) {
+        final raw = _prefs?.getString(k);
+        if (raw != null && raw.isNotEmpty) {
+          try {
+            final list = json.decode(raw) as List<dynamic>;
+            for (final item in list) {
+              final cust = CustomerModel.fromJson(item as Map<String, dynamic>);
+              final key = cust.id.isNotEmpty ? cust.id : cust.name.trim().toLowerCase();
+              byId[key] = cust;
+            }
+          } catch (_) {}
+        }
+      }
+      return byId.values.toList();
+    } catch (e) {
+      debugPrint('[LocalCache] Error loading all customers: $e');
       return [];
     }
   }
@@ -95,12 +128,45 @@ class LocalCacheService {
   Future<List<InvoiceModel>> loadInvoices({String companyId = ''}) async {
     try {
       await init();
-      final raw = _prefs?.getString(_invoiceKey(companyId));
+      String? raw = _prefs?.getString(_invoiceKey(companyId));
+      if ((raw == null || raw.isEmpty) && companyId.isNotEmpty) {
+        raw = _prefs?.getString(_keyInvoices);
+      }
       if (raw == null || raw.isEmpty) return [];
       final list = json.decode(raw) as List<dynamic>;
       return list.map((i) => InvoiceModel.fromJson(i as Map<String, dynamic>)).toList();
     } catch (e) {
       debugPrint('[LocalCache] Error loading invoices: $e');
+      return [];
+    }
+  }
+
+  /// Loads all invoices across all company scopes and legacy cache
+  Future<List<InvoiceModel>> loadAllInvoices() async {
+    try {
+      await init();
+      final keys = _prefs?.getKeys() ?? <String>{};
+      final invoiceKeys = keys.where((k) => k.startsWith(_keyInvoices)).toSet();
+      if (_prefs?.containsKey(_keyInvoices) == true) {
+        invoiceKeys.add(_keyInvoices);
+      }
+      final Map<String, InvoiceModel> byId = {};
+      for (final k in invoiceKeys) {
+        final raw = _prefs?.getString(k);
+        if (raw != null && raw.isNotEmpty) {
+          try {
+            final list = json.decode(raw) as List<dynamic>;
+            for (final item in list) {
+              final inv = InvoiceModel.fromJson(item as Map<String, dynamic>);
+              final key = inv.id.isNotEmpty ? inv.id : '${inv.invoiceNumber}_${inv.customerSnapshot.name}';
+              byId[key] = inv;
+            }
+          } catch (_) {}
+        }
+      }
+      return byId.values.toList();
+    } catch (e) {
+      debugPrint('[LocalCache] Error loading all invoices: $e');
       return [];
     }
   }

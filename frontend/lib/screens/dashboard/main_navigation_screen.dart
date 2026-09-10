@@ -123,6 +123,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         currentIndex: _currentIndex,
         onTap: (index) {
           setState(() => _currentIndex = index);
+          if (index == 2) {
+            try {
+              final invP = context.read<InvoiceProvider>();
+              final prodP = context.read<ProductProvider>();
+              prodP.syncItemsFromInvoices(invP.allInvoices);
+            } catch (_) {}
+          }
         },
         onAddTap: () => _showAddActionSheet(context),
       ),
