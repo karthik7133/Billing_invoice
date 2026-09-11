@@ -12,6 +12,7 @@ import '../../providers/invoice_provider.dart';
 import '../../services/excel_export_service.dart';
 import '../../services/share_service.dart';
 import '../../widgets/party_xls_save_sheet.dart';
+import 'party_ledger_sheet_screen.dart';
 
 class LedgerScreen extends StatefulWidget {
   final CustomerModel? initialParty;
@@ -371,7 +372,19 @@ class _LedgerScreenState extends State<LedgerScreen> {
                         onOpenXls: isLoading
                             ? null
                             : () => _openPartyXls(party, allInvoices, business),
-                        onTap: () => _openSaveSheet(party, allInvoices, business),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => PartyLedgerSheetScreen(
+                                party: party,
+                                initialFromDate: _fromDate,
+                                initialToDate: _toDate,
+                              ),
+                            ),
+                          );
+                        },
+                        onSaveSheet: () => _openSaveSheet(party, allInvoices, business),
                       );
                     },
                   ),
@@ -450,9 +463,12 @@ class _LedgerScreenState extends State<LedgerScreen> {
                       children: [
                         const Icon(Icons.calendar_today_outlined, size: 14, color: Color(0xFF2563EB)),
                         const SizedBox(width: 6),
-                        Text(
-                          '${dfmt.format(_fromDate)} — ${dfmt.format(_toDate)}',
-                          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
+                        Flexible(
+                          child: Text(
+                            '${dfmt.format(_fromDate)} — ${dfmt.format(_toDate)}',
+                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                         const SizedBox(width: 4),
                         const Icon(Icons.edit_calendar_outlined, size: 14, color: Color(0xFF64748B)),
@@ -508,6 +524,7 @@ class PartyLedgerCard extends StatelessWidget {
   final bool isLoading;
   final VoidCallback? onOpenXls;
   final VoidCallback? onTap;
+  final VoidCallback? onSaveSheet;
 
   const PartyLedgerCard({
     super.key,
@@ -516,6 +533,7 @@ class PartyLedgerCard extends StatelessWidget {
     required this.isLoading,
     required this.onOpenXls,
     required this.onTap,
+    this.onSaveSheet,
   });
 
   @override
@@ -583,9 +601,11 @@ class PartyLedgerCard extends StatelessWidget {
                         style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
                       ),
                     const SizedBox(height: 4),
-                    Row(
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
                       children: [
-                        if (summary.periodBills > 0) ...[
+                        if (summary.periodBills > 0)
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                             decoration: BoxDecoration(
@@ -597,8 +617,6 @@ class PartyLedgerCard extends StatelessWidget {
                               style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF2563EB)),
                             ),
                           ),
-                          const SizedBox(width: 6),
-                        ],
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                           decoration: BoxDecoration(
@@ -666,7 +684,7 @@ class PartyLedgerCard extends StatelessWidget {
                   Tooltip(
                     message: 'Date Period & Save options',
                     child: InkWell(
-                      onTap: onTap,
+                      onTap: onSaveSheet ?? onTap,
                       borderRadius: BorderRadius.circular(10),
                       child: Container(
                         padding: const EdgeInsets.all(8),

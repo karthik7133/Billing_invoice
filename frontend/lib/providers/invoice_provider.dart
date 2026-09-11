@@ -60,6 +60,8 @@ class InvoiceProvider with ChangeNotifier {
 
   List<InvoiceModel> get invoices {
     return _invoices.where((inv) {
+      if (inv.isDeleted) return false;
+
       // Status filter
       if (_statusFilter != 'ALL') {
         if (_statusFilter == 'UNPAID') {
@@ -95,9 +97,8 @@ class InvoiceProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
-  /// Unfiltered full list — use this when you need to find a specific invoice
-  /// regardless of current search/filter state (e.g. in InvoiceDetailScreen).
-  List<InvoiceModel> get allInvoices => List.unmodifiable(_invoices);
+  /// Unfiltered full active list (excluding deleted)
+  List<InvoiceModel> get allInvoices => List.unmodifiable(_invoices.where((inv) => !inv.isDeleted));
 
   void setStatusFilter(String status) {
     _statusFilter = status;
@@ -129,7 +130,7 @@ class InvoiceProvider with ChangeNotifier {
     int draftCount = 0;
 
     for (final inv in _invoices) {
-      if (inv.status == 'CANCELLED') continue;
+      if (inv.isDeleted || inv.status == 'CANCELLED') continue;
 
       if (inv.invoiceDate.isAfter(startOfToday.subtract(const Duration(seconds: 1)))) {
         todaySales += inv.grandTotal;
@@ -181,7 +182,7 @@ class InvoiceProvider with ChangeNotifier {
   }
 
   List<InvoiceModel> getInvoicesForCustomer(String customerId) {
-    return _invoices.where((i) => i.customerId == customerId || i.customerSnapshot.id == customerId).toList();
+    return _invoices.where((i) => !i.isDeleted && (i.customerId == customerId || i.customerSnapshot.id == customerId)).toList();
   }
 
   Future<InvoiceModel> createInvoice({
@@ -198,6 +199,7 @@ class InvoiceProvider with ChangeNotifier {
     double otherCharges = 0,
     String status = 'ISSUED',
     double amountPaid = 0,
+    List<PaymentRecord> payments = const [],
     String paymentType = 'Cash',
     String description = '',
     String notes = '',
@@ -222,7 +224,9 @@ class InvoiceProvider with ChangeNotifier {
         ? invoiceNumber.trim()
         : '${business.invoicePrefix}-${business.nextInvoiceNumber.toString().padLeft(4, '0')}';
 
-    final paid = amountPaid;
+    final paid = payments.isNotEmpty
+        ? payments.fold<double>(0.0, (sum, p) => sum + p.amount)
+        : amountPaid;
     final balance = (calculated.grandTotal - paid).clamp(0.0, calculated.grandTotal);
     final excess = paid > calculated.grandTotal ? paid - calculated.grandTotal : 0.0;
 
@@ -277,6 +281,7 @@ class InvoiceProvider with ChangeNotifier {
       origin: origin,
       attachments: attachments,
       items: parsedItems,
+      payments: payments,
       isInterState: calculated.isInterState,
       subtotal: calculated.subtotal,
       itemsDiscount: calculated.itemsDiscount,
@@ -314,6 +319,7 @@ class InvoiceProvider with ChangeNotifier {
         'origin': origin,
         'attachments': attachments,
         'items': rawItems,
+        'payments': payments.map((p) => p.toJson()).toList(),
         'invoiceDiscount': invoiceDiscount,
         'invoiceDiscountType': invoiceDiscountType,
         'otherCharges': otherCharges,
@@ -449,6 +455,60 @@ class InvoiceProvider with ChangeNotifier {
     }
   }
 
+  /// Add an individual payment to an invoice
+  Future<bool> addPaymentToInvoice(String invoiceId, PaymentRecord payment) async {
+    final index = _invoices.indexWhere((inv) => inv.id == invoiceId);
+    if (index == -1) return false;
+
+    final old = _invoices[index];
+    final updatedPayments = List<PaymentRecord>.from(old.payments)..add(payment);
+    return updatePaymentsForInvoice(invoiceId, updatedPayments);
+  }
+
+  /// Update the full list of payments for an invoice
+  Future<bool> updatePaymentsForInvoice(String invoiceId, List<PaymentRecord> payments) async {
+    final index = _invoices.indexWhere((inv) => inv.id == invoiceId);
+    if (index == -1) return false;
+
+    final old = _invoices[index];
+    final totalRec = payments.fold<double>(0.0, (s, p) => s + p.amount);
+    final newBalance = (old.grandTotal - totalRec).clamp(0.0, old.grandTotal);
+    final newExcess = totalRec > old.grandTotal ? totalRec - old.grandTotal : 0.0;
+    String newStatus = old.status;
+    if (totalRec >= old.grandTotal && old.grandTotal > 0) {
+      newStatus = 'PAID';
+    } else if (totalRec > 0) {
+      newStatus = 'PARTIALLY_PAID';
+    } else {
+      newStatus = 'ISSUED';
+    }
+
+    final updated = old.copyWith(
+      payments: payments,
+      amountPaid: totalRec,
+      balanceDue: newBalance,
+      excessAmount: newExcess,
+      status: newStatus,
+      paymentType: payments.isNotEmpty ? payments.last.type : old.paymentType,
+    );
+
+    _invoices[index] = updated;
+    await _cache.saveInvoices(_invoices, companyId: _activeCompanyId);
+    notifyListeners();
+
+    try {
+      final res = await _api.put('${Endpoints.invoices}/$invoiceId', {
+        'payments': payments.map((p) => p.toJson()).toList(),
+        'amountPaid': totalRec,
+        'status': newStatus,
+      });
+      return res.success;
+    } catch (e) {
+      debugPrint('[InvoiceProvider] updatePaymentsForInvoice error: $e');
+      return false;
+    }
+  }
+
   Future<void> updatePayment(String invoiceId, double paidAmount) async {
     final index = _invoices.indexWhere((inv) => inv.id == invoiceId);
     if (index != -1) {
@@ -462,17 +522,28 @@ class InvoiceProvider with ChangeNotifier {
         newStatus = 'PARTIALLY_PAID';
       }
 
+      // Update or create single payment record
+      final payments = [
+        PaymentRecord(
+          amount: newPaid,
+          type: old.paymentType,
+          date: DateTime.now(),
+        )
+      ];
+
       _invoices[index] = old.copyWith(
+        payments: payments,
         amountPaid: newPaid,
         balanceDue: newBalance,
         status: newStatus,
       );
 
-      await _cache.saveInvoices(_invoices);
+      await _cache.saveInvoices(_invoices, companyId: _activeCompanyId);
       notifyListeners();
 
       try {
-        await _api.put('${Endpoints.invoices}/$invoiceId/status', {
+        await _api.put('${Endpoints.invoices}/$invoiceId', {
+          'payments': payments.map((p) => p.toJson()).toList(),
           'amountPaid': newPaid,
           'status': newStatus,
         });
@@ -482,15 +553,95 @@ class InvoiceProvider with ChangeNotifier {
     }
   }
 
-  Future<void> deleteInvoice(String invoiceId) async {
+  /// Soft delete invoice (moved to recycle bin for 30 days)
+  Future<bool> deleteInvoice(String invoiceId) async {
+    final index = _invoices.indexWhere((inv) => inv.id == invoiceId);
+    if (index != -1) {
+      _invoices[index] = _invoices[index].copyWith(
+        isDeleted: true,
+        deletedAt: DateTime.now(),
+      );
+      await _cache.saveInvoices(_invoices, companyId: _activeCompanyId);
+      notifyListeners();
+    }
+
+    try {
+      final res = await _api.delete('${Endpoints.invoices}/$invoiceId');
+      return res.success;
+    } catch (e) {
+      debugPrint('[InvoiceProvider] deleteInvoice error: $e');
+      return false;
+    }
+  }
+
+  /// Restore soft-deleted invoice from recycle bin
+  Future<bool> restoreInvoice(String invoiceId) async {
+    final index = _invoices.indexWhere((inv) => inv.id == invoiceId);
+    if (index != -1) {
+      _invoices[index] = _invoices[index].copyWith(
+        isDeleted: false,
+        deletedAt: null,
+      );
+      await _cache.saveInvoices(_invoices, companyId: _activeCompanyId);
+      notifyListeners();
+    }
+
+    try {
+      final res = await _api.post('${Endpoints.invoices}/$invoiceId/restore', {});
+      return res.success;
+    } catch (e) {
+      debugPrint('[InvoiceProvider] restoreInvoice error: $e');
+      return false;
+    }
+  }
+
+  /// Get all soft-deleted invoices for recycle bin (within 30 days)
+  Future<List<InvoiceModel>> getRecycleBinInvoices() async {
+    final thirtyDaysAgo = DateTime.now().subtract(const Duration(days: 30));
+    _invoices.removeWhere((inv) => inv.isDeleted && inv.deletedAt != null && inv.deletedAt!.isBefore(thirtyDaysAgo));
+
+    try {
+      final res = await _api.get('${Endpoints.invoices}/recycle-bin');
+      if (res.success && res.data != null && res.data['invoices'] != null) {
+        final list = (res.data['invoices'] as List)
+            .map((i) => InvoiceModel.fromJson(i as Map<String, dynamic>))
+            .toList();
+        return list;
+      }
+    } catch (e) {
+      debugPrint('[InvoiceProvider] getRecycleBinInvoices error: $e');
+    }
+
+    return _invoices.where((inv) => inv.isDeleted).toList();
+  }
+
+  /// Permanently delete an invoice
+  Future<bool> permanentlyDeleteInvoice(String invoiceId) async {
     _invoices.removeWhere((inv) => inv.id == invoiceId);
-    await _cache.saveInvoices(_invoices);
+    await _cache.saveInvoices(_invoices, companyId: _activeCompanyId);
     notifyListeners();
 
     try {
-      await _api.delete('${Endpoints.invoices}/$invoiceId');
+      final res = await _api.delete('${Endpoints.invoices}/$invoiceId?permanent=true');
+      return res.success;
     } catch (e) {
-      debugPrint('[InvoiceProvider] deleteInvoice error: $e');
+      debugPrint('[InvoiceProvider] permanentlyDeleteInvoice error: $e');
+      return false;
+    }
+  }
+
+  /// Empty entire recycle bin
+  Future<bool> emptyRecycleBin() async {
+    _invoices.removeWhere((inv) => inv.isDeleted);
+    await _cache.saveInvoices(_invoices, companyId: _activeCompanyId);
+    notifyListeners();
+
+    try {
+      final res = await _api.delete('${Endpoints.invoices}/recycle-bin/empty');
+      return res.success;
+    } catch (e) {
+      debugPrint('[InvoiceProvider] emptyRecycleBin error: $e');
+      return false;
     }
   }
 }

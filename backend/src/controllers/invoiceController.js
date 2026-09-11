@@ -61,7 +61,7 @@ const getNextInvoiceNumber = async (req, res) => {
 const getInvoices = async (req, res) => {
   try {
     const { status, search, startDate, endDate, period, companyId } = req.query;
-    const andConditions = [{ userId: req.user._id }];
+    const andConditions = [{ userId: req.user._id, isDeleted: { $ne: true } }];
 
     // Company isolation filter
     const companyFilter = await buildCompanyFilter(req.user._id, companyId);
@@ -275,7 +275,31 @@ const createInvoice = async (req, res) => {
     });
 
     const grandTotal = calculated.grandTotal;
-    const paid = Number(amountPaid) || 0;
+
+    // Parse payments list or synthesize from amountPaid
+    let parsedPayments = [];
+    if (Array.isArray(req.body.payments) && req.body.payments.length > 0) {
+      parsedPayments = req.body.payments.map((p) => ({
+        amount: Number(p.amount) || 0,
+        type: p.type || req.body.paymentType || 'Cash',
+        date: p.date ? new Date(p.date) : (invoiceDate ? new Date(invoiceDate) : new Date()),
+        notes: p.notes || '',
+      }));
+    } else if (Number(amountPaid) > 0) {
+      parsedPayments = [
+        {
+          amount: Number(amountPaid),
+          type: req.body.paymentType || 'Cash',
+          date: invoiceDate ? new Date(invoiceDate) : new Date(),
+          notes: '',
+        },
+      ];
+    }
+
+    const paid = parsedPayments.length > 0
+      ? Number(parsedPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0).toFixed(2))
+      : (Number(amountPaid) || 0);
+
     const balanceDue = Number(Math.max(0, grandTotal - paid).toFixed(2));
     const excessAmount = paid > grandTotal ? Number((paid - grandTotal).toFixed(2)) : 0;
 
@@ -340,7 +364,8 @@ const createInvoice = async (req, res) => {
       amountPaid: paid,
       balanceDue: balanceDue,
       excessAmount: excessAmount,
-      paymentType: req.body.paymentType || 'Cash',
+      payments: parsedPayments,
+      paymentType: req.body.paymentType || (parsedPayments.length > 0 ? parsedPayments[0].type : 'Cash'),
       description: req.body.description || notes || '',
       origin: req.body.origin || 'AP',
       attachments: Array.isArray(req.body.attachments) ? req.body.attachments : [],
@@ -510,7 +535,24 @@ const updateInvoice = async (req, res) => {
       }
     });
 
-    if (req.body.amountPaid !== undefined) {
+    if (Array.isArray(req.body.payments)) {
+      invoice.payments = req.body.payments.map((p) => ({
+        amount: Number(p.amount) || 0,
+        type: p.type || invoice.paymentType || 'Cash',
+        date: p.date ? new Date(p.date) : new Date(),
+        notes: p.notes || '',
+      }));
+      invoice.amountPaid = Number(invoice.payments.reduce((sum, p) => sum + (p.amount || 0), 0).toFixed(2));
+      invoice.balanceDue = Number(Math.max(0, invoice.grandTotal - invoice.amountPaid).toFixed(2));
+      invoice.excessAmount = invoice.amountPaid > invoice.grandTotal ? Number((invoice.amountPaid - invoice.grandTotal).toFixed(2)) : 0;
+      if (invoice.amountPaid >= invoice.grandTotal && invoice.grandTotal > 0) {
+        invoice.status = 'PAID';
+      } else if (invoice.amountPaid > 0) {
+        invoice.status = 'PARTIALLY_PAID';
+      } else {
+        invoice.status = 'ISSUED';
+      }
+    } else if (req.body.amountPaid !== undefined) {
       invoice.amountPaid = Number(req.body.amountPaid);
       invoice.balanceDue = Number(Math.max(0, invoice.grandTotal - invoice.amountPaid).toFixed(2));
       invoice.excessAmount = invoice.amountPaid > invoice.grandTotal ? Number((invoice.amountPaid - invoice.grandTotal).toFixed(2)) : 0;
@@ -532,21 +574,111 @@ const updateInvoice = async (req, res) => {
   }
 };
 
-// @desc    Delete invoice
+// @desc    Delete invoice (soft delete by default, retained in recycle bin for 30 days)
 // @route   DELETE /api/invoices/:id
 // @access  Private
 const deleteInvoice = async (req, res) => {
   try {
-    const invoice = await Invoice.findOneAndDelete({
-      _id: req.params.id,
-      userId: req.user._id,
-    });
+    const { permanent } = req.query;
+    const { id } = req.params;
+    let query = { userId: req.user._id };
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      query._id = id;
+    } else {
+      query.$or = [{ _id: id }, { invoiceNumber: id }];
+    }
+
+    if (permanent === 'true') {
+      const invoice = await Invoice.findOneAndDelete(query);
+
+      if (!invoice) {
+        return res.status(404).json({ success: false, message: 'Invoice not found' });
+      }
+
+      return res.json({ success: true, message: 'Invoice permanently deleted' });
+    }
+
+    // Soft delete: keep for 30 days in recycle bin
+    const invoice = await Invoice.findOneAndUpdate(
+      query,
+      { isDeleted: true, deletedAt: new Date() },
+      { new: true }
+    );
 
     if (!invoice) {
       return res.status(404).json({ success: false, message: 'Invoice not found' });
     }
 
-    res.json({ success: true, message: 'Invoice deleted successfully' });
+    res.json({ success: true, message: 'Invoice moved to recycle bin (retained for 30 days)', invoice });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Get recycle bin items (invoices deleted within 30 days)
+// @route   GET /api/invoices/recycle-bin
+// @access  Private
+const getRecycleBin = async (req, res) => {
+  try {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    // Auto-purge items older than 30 days
+    await Invoice.deleteMany({
+      userId: req.user._id,
+      isDeleted: true,
+      deletedAt: { $lt: thirtyDaysAgo },
+    });
+
+    const invoices = await Invoice.find({
+      userId: req.user._id,
+      isDeleted: true,
+    }).sort({ deletedAt: -1 });
+
+    res.json({ success: true, count: invoices.length, invoices });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Restore invoice from recycle bin
+// @route   POST /api/invoices/:id/restore
+// @access  Private
+const restoreInvoice = async (req, res) => {
+  try {
+    const { id } = req.params;
+    let query = { userId: req.user._id };
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      query._id = id;
+    } else {
+      query.$or = [{ _id: id }, { invoiceNumber: id }];
+    }
+
+    const invoice = await Invoice.findOneAndUpdate(
+      query,
+      { isDeleted: false, deletedAt: null },
+      { new: true }
+    );
+
+    if (!invoice) {
+      return res.status(404).json({ success: false, message: 'Invoice not found in recycle bin' });
+    }
+
+    res.json({ success: true, message: 'Invoice restored successfully', invoice });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Empty recycle bin
+// @route   DELETE /api/invoices/recycle-bin/empty
+// @access  Private
+const emptyRecycleBin = async (req, res) => {
+  try {
+    await Invoice.deleteMany({
+      userId: req.user._id,
+      isDeleted: true,
+    });
+
+    res.json({ success: true, message: 'Recycle bin emptied' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -561,4 +693,7 @@ module.exports = {
   updateInvoiceStatus,
   markInvoiceAsPaid,
   deleteInvoice,
+  getRecycleBin,
+  restoreInvoice,
+  emptyRecycleBin,
 };

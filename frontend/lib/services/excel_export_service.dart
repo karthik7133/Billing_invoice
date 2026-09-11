@@ -910,8 +910,32 @@ class ExcelExportService {
           ],
         );
 
-        // 2. Credit row: Payment received (if any)
-        if (inv.amountPaid > 0) {
+        // 2. Credit rows: Payment received (if any)
+        if (inv.payments.isNotEmpty) {
+          for (final p in inv.payments) {
+            totalCredit += p.amount;
+            final pDateStr = dfmt.format(p.date);
+            final payMode = p.type.isNotEmpty ? p.type.toUpperCase() : 'CASH';
+            final payDesc = p.notes.isNotEmpty
+                ? p.notes.toUpperCase()
+                : '$bShort TO $pName $payMode PAID';
+
+            writeRow(
+              [
+                TextCellValue(pDateStr),
+                TextCellValue(payDesc),
+                TextCellValue(formatAmount(p.amount)),
+                TextCellValue(''),
+              ],
+              [
+                creditDateStyle,
+                creditDescStyle,
+                creditAmountStyle,
+                blankStyle,
+              ],
+            );
+          }
+        } else if (inv.amountPaid > 0) {
           totalCredit += inv.amountPaid;
           final payMode = inv.paymentType.isNotEmpty ? inv.paymentType.toUpperCase() : 'CASH';
           final payDesc = '$bShort TO $pName $payMode PAID';
@@ -1042,5 +1066,265 @@ class ExcelExportService {
 
     final fileBytes = excel.save();
     return Uint8List.fromList(fileBytes ?? []);
+  }
+
+  /// Generate an exact replica Excel file (.xlsx) directly from interactive Ledger rows (edited or custom)
+  static Future<Uint8List> generateFromLedgerRowsXlsx({
+    required List<LedgerRowItem> rows,
+    String? sheetName,
+  }) async {
+    final excel = Excel.createExcel();
+    final defaultSheet = excel.getDefaultSheet() ?? 'Sheet1';
+    final sheet = excel[defaultSheet];
+
+    final dfmt = DateFormat('dd/MM/yy');
+    int rowIndex = 0;
+
+    void writeRow(List<CellValue> vals, List<CellStyle> styles) {
+      for (int c = 0; c < vals.length; c++) {
+        final cell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: rowIndex));
+        cell.value = vals[c];
+        if (c < styles.length) cell.cellStyle = styles[c];
+      }
+      rowIndex++;
+    }
+
+    String formatAmount(double amt) {
+      if (amt == amt.roundToDouble()) {
+        return '${amt.toInt()}/-';
+      }
+      return '${amt.toStringAsFixed(2)}/-';
+    }
+
+    final headerLeftStyle = CellStyle(
+      bold: true,
+      fontSize: 11,
+      fontColorHex: ExcelColor.fromHexString('#000000'),
+      horizontalAlign: HorizontalAlign.Left,
+      verticalAlign: VerticalAlign.Center,
+    );
+
+    final headerRightStyle = CellStyle(
+      bold: true,
+      fontSize: 11,
+      fontColorHex: ExcelColor.fromHexString('#000000'),
+      horizontalAlign: HorizontalAlign.Right,
+      verticalAlign: VerticalAlign.Center,
+    );
+
+    final debitDateStyle = CellStyle(
+      fontSize: 11,
+      fontColorHex: ExcelColor.fromHexString('#0000FF'),
+      horizontalAlign: HorizontalAlign.Left,
+      verticalAlign: VerticalAlign.Center,
+    );
+    final debitDescStyle = CellStyle(
+      fontSize: 11,
+      fontColorHex: ExcelColor.fromHexString('#0000FF'),
+      horizontalAlign: HorizontalAlign.Left,
+      verticalAlign: VerticalAlign.Center,
+    );
+    final debitAmountStyle = CellStyle(
+      fontSize: 11,
+      fontColorHex: ExcelColor.fromHexString('#0000FF'),
+      horizontalAlign: HorizontalAlign.Right,
+      verticalAlign: VerticalAlign.Center,
+    );
+
+    final creditDateStyle = CellStyle(
+      fontSize: 11,
+      fontColorHex: ExcelColor.fromHexString('#FF0000'),
+      horizontalAlign: HorizontalAlign.Left,
+      verticalAlign: VerticalAlign.Center,
+    );
+    final creditDescStyle = CellStyle(
+      fontSize: 11,
+      fontColorHex: ExcelColor.fromHexString('#FF0000'),
+      horizontalAlign: HorizontalAlign.Left,
+      verticalAlign: VerticalAlign.Center,
+    );
+    final creditAmountStyle = CellStyle(
+      fontSize: 11,
+      fontColorHex: ExcelColor.fromHexString('#FF0000'),
+      horizontalAlign: HorizontalAlign.Right,
+      verticalAlign: VerticalAlign.Center,
+    );
+
+    final boldCreditTotalStyle = CellStyle(
+      bold: true,
+      fontSize: 11,
+      fontColorHex: ExcelColor.fromHexString('#FF0000'),
+      horizontalAlign: HorizontalAlign.Right,
+      verticalAlign: VerticalAlign.Center,
+    );
+    final boldDebitTotalStyle = CellStyle(
+      bold: true,
+      fontSize: 11,
+      fontColorHex: ExcelColor.fromHexString('#0000FF'),
+      horizontalAlign: HorizontalAlign.Right,
+      verticalAlign: VerticalAlign.Center,
+    );
+
+    final settlementStyle = CellStyle(
+      bold: true,
+      fontSize: 11,
+      fontColorHex: ExcelColor.fromHexString('#000000'),
+      horizontalAlign: HorizontalAlign.Center,
+      verticalAlign: VerticalAlign.Center,
+    );
+
+    final blankStyle = CellStyle(
+      fontSize: 11,
+      horizontalAlign: HorizontalAlign.Center,
+      verticalAlign: VerticalAlign.Center,
+    );
+
+    // 1. Headers
+    writeRow(
+      [
+        TextCellValue('DATE'),
+        TextCellValue('DESCRIPTION '),
+        TextCellValue('CREDIT'),
+        TextCellValue('DEBIT'),
+      ],
+      [
+        headerLeftStyle,
+        headerLeftStyle,
+        headerRightStyle,
+        headerRightStyle,
+      ],
+    );
+
+    // 2. Rows
+    for (final r in rows) {
+      if (r.isSettlementBanner) {
+        final sRow = rowIndex;
+        writeRow(
+          [
+            TextCellValue('SETTLEMENT '),
+            TextCellValue(''),
+            TextCellValue(''),
+            TextCellValue(''),
+          ],
+          [
+            settlementStyle,
+            settlementStyle,
+            settlementStyle,
+            settlementStyle,
+          ],
+        );
+        try {
+          sheet.merge(
+            CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: sRow),
+            CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: sRow),
+          );
+        } catch (_) {}
+      } else if (r.isSettlementTotal) {
+        writeRow(
+          [
+            TextCellValue(''),
+            TextCellValue(r.description.isNotEmpty ? r.description : ''),
+            TextCellValue(r.credit != null ? formatAmount(r.credit!) : ''),
+            TextCellValue(r.debit != null ? formatAmount(r.debit!) : ''),
+          ],
+          [
+            blankStyle,
+            headerLeftStyle,
+            boldCreditTotalStyle,
+            boldDebitTotalStyle,
+          ],
+        );
+      } else if (r.isPayment) {
+        writeRow(
+          [
+            TextCellValue(dfmt.format(r.date)),
+            TextCellValue(r.description),
+            TextCellValue(formatAmount(r.credit!)),
+            TextCellValue(''),
+          ],
+          [
+            creditDateStyle,
+            creditDescStyle,
+            creditAmountStyle,
+            blankStyle,
+          ],
+        );
+      } else {
+        writeRow(
+          [
+            TextCellValue(dfmt.format(r.date)),
+            TextCellValue(r.description),
+            TextCellValue(''),
+            TextCellValue(formatAmount(r.debit ?? 0)),
+          ],
+          [
+            debitDateStyle,
+            debitDescStyle,
+            blankStyle,
+            debitAmountStyle,
+          ],
+        );
+      }
+    }
+
+    sheet.setColumnWidth(0, 16.0);
+    sheet.setColumnWidth(1, 42.0);
+    sheet.setColumnWidth(2, 18.0);
+    sheet.setColumnWidth(3, 18.0);
+
+    final bytes = excel.save();
+    return Uint8List.fromList(bytes ?? []);
+  }
+}
+
+/// Represents a row in the interactive Ledger spreadsheet matching ex.xlsx
+class LedgerRowItem {
+  String id;
+  DateTime date;
+  String description;
+  double? credit; // Red payment
+  double? debit;  // Blue bill
+  bool isSettlementTotal;
+  bool isSettlementBanner;
+  String? invoiceId;
+  String? paymentId;
+
+  LedgerRowItem({
+    required this.id,
+    required this.date,
+    required this.description,
+    this.credit,
+    this.debit,
+    this.isSettlementTotal = false,
+    this.isSettlementBanner = false,
+    this.invoiceId,
+    this.paymentId,
+  });
+
+  bool get isPayment => credit != null && credit! > 0;
+  bool get isBill => debit != null && debit! > 0;
+
+  LedgerRowItem copyWith({
+    String? id,
+    DateTime? date,
+    String? description,
+    double? credit,
+    double? debit,
+    bool? isSettlementTotal,
+    bool? isSettlementBanner,
+    String? invoiceId,
+    String? paymentId,
+  }) {
+    return LedgerRowItem(
+      id: id ?? this.id,
+      date: date ?? this.date,
+      description: description ?? this.description,
+      credit: credit ?? this.credit,
+      debit: debit ?? this.debit,
+      isSettlementTotal: isSettlementTotal ?? this.isSettlementTotal,
+      isSettlementBanner: isSettlementBanner ?? this.isSettlementBanner,
+      invoiceId: invoiceId ?? this.invoiceId,
+      paymentId: paymentId ?? this.paymentId,
+    );
   }
 }

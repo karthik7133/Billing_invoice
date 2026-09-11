@@ -71,6 +71,29 @@ const InvoiceItemSchema = new mongoose.Schema({
   },
 });
 
+const PaymentSchema = new mongoose.Schema(
+  {
+    amount: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+    type: {
+      type: String,
+      default: 'Cash',
+    },
+    date: {
+      type: Date,
+      default: Date.now,
+    },
+    notes: {
+      type: String,
+      default: '',
+    },
+  },
+  { timestamps: true }
+);
+
 const InvoiceSchema = new mongoose.Schema(
   {
     userId: {
@@ -244,6 +267,16 @@ const InvoiceSchema = new mongoose.Schema(
     pdfUrl: {
       type: String,
       default: '',
+    },
+    payments: [PaymentSchema],
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
     },
   },
   { timestamps: true }

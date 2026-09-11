@@ -32,7 +32,7 @@ const buildCompanyFilter = async (userId, companyId) => {
 const getCustomers = async (req, res) => {
   try {
     const { search, customerType, companyId } = req.query;
-    const andConditions = [{ userId: req.user._id }];
+    const andConditions = [{ userId: req.user._id, isDeleted: { $ne: true } }];
 
     // Company isolation filter
     const companyFilter = await buildCompanyFilter(req.user._id, companyId);
@@ -78,6 +78,7 @@ const getCustomers = async (req, res) => {
     const customerIds = uniqueCustomers.map((c) => c._id);
     const invoiceMatchQuery = {
       customerId: { $in: customerIds },
+      isDeleted: { $ne: true },
       ...companyFilter,
     };
 
@@ -135,7 +136,7 @@ const getCustomerById = async (req, res) => {
 
     // Fetch invoices scoped to the same company
     const companyFilter = await buildCompanyFilter(req.user._id, companyId);
-    const invoiceQuery = { customerId: customer._id, userId: req.user._id, ...companyFilter };
+    const invoiceQuery = { customerId: customer._id, userId: req.user._id, isDeleted: { $ne: true }, ...companyFilter };
 
     const invoices = await Invoice.find(invoiceQuery).sort({ invoiceDate: -1, createdAt: -1 });
 
@@ -262,25 +263,28 @@ const updateCustomer = async (req, res) => {
   }
 };
 
-// @desc    Delete customer and all duplicate records
+// @desc    Delete customer (soft delete for 30 days unless permanent=true)
 // @route   DELETE /api/customers/:id
 // @access  Private
 const deleteCustomer = async (req, res) => {
   try {
+    const { permanent } = req.query;
     const customer = await Customer.findOne({
       _id: req.params.id,
       userId: req.user._id,
     });
 
     if (!customer) {
-      await Customer.deleteOne({ _id: req.params.id, userId: req.user._id });
+      if (permanent === 'true') {
+        await Customer.deleteOne({ _id: req.params.id, userId: req.user._id });
+      }
       return res.json({ success: true, message: 'Customer deleted successfully' });
     }
 
     const customerName = (customer.name || '').trim();
     const companyScope = customer.companyId || '';
 
-    const deleteQuery = {
+    const query = {
       userId: req.user._id,
       $or: [
         { _id: customer._id },
@@ -288,12 +292,19 @@ const deleteCustomer = async (req, res) => {
       ],
     };
     if (companyScope) {
-      deleteQuery.companyId = companyScope;
+      query.companyId = companyScope;
     }
 
-    await Customer.deleteMany(deleteQuery);
+    if (permanent === 'true') {
+      await Customer.deleteMany(query);
+      return res.json({ success: true, message: 'Customer permanently deleted' });
+    }
 
-    res.json({ success: true, message: 'Customer deleted successfully' });
+    // Soft delete customer and related invoices
+    await Customer.updateMany(query, { isDeleted: true, deletedAt: new Date() });
+    await Invoice.updateMany({ customerId: customer._id, userId: req.user._id }, { isDeleted: true, deletedAt: new Date() });
+
+    res.json({ success: true, message: 'Customer and entries moved to recycle bin (retained for 30 days)' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

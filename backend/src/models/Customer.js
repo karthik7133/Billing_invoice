@@ -91,6 +91,15 @@ const CustomerSchema = new mongoose.Schema(
       enum: ['REGISTERED_B2B', 'UNREGISTERED_B2C'],
       default: 'UNREGISTERED_B2C',
     },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true }
 );

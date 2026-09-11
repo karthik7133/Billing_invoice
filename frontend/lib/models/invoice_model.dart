@@ -101,6 +101,59 @@ class InvoiceItemModel {
   }
 }
 
+class PaymentRecord {
+  final String? id;
+  final double amount;
+  final String type; // 'Cash', 'Bank Transfer', 'UPI', 'Cheque', 'IMPS', or custom
+  final DateTime date;
+  final String notes;
+
+  PaymentRecord({
+    this.id,
+    required this.amount,
+    this.type = 'Cash',
+    required this.date,
+    this.notes = '',
+  });
+
+  factory PaymentRecord.fromJson(Map<String, dynamic> json) {
+    return PaymentRecord(
+      id: json['_id']?.toString() ?? json['id']?.toString(),
+      amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
+      type: json['type']?.toString() ?? 'Cash',
+      date: DateTime.tryParse(json['date']?.toString() ?? '') ?? DateTime.now(),
+      notes: json['notes']?.toString() ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (id != null) '_id': id,
+      if (id != null) 'id': id,
+      'amount': amount,
+      'type': type,
+      'date': date.toIso8601String(),
+      'notes': notes,
+    };
+  }
+
+  PaymentRecord copyWith({
+    String? id,
+    double? amount,
+    String? type,
+    DateTime? date,
+    String? notes,
+  }) {
+    return PaymentRecord(
+      id: id ?? this.id,
+      amount: amount ?? this.amount,
+      type: type ?? this.type,
+      date: date ?? this.date,
+      notes: notes ?? this.notes,
+    );
+  }
+}
+
 class InvoiceModel {
   final String id;
   final String invoiceNumber;
@@ -112,6 +165,9 @@ class InvoiceModel {
   final String origin; // e.g. 'AP', 'ORRISA', 'GUJARAT', 'KARNATAKA'
   final List<String> attachments; // Cloudinary URLs
   final List<InvoiceItemModel> items;
+  final List<PaymentRecord> payments;
+  final bool isDeleted;
+  final DateTime? deletedAt;
   final bool isInterState;
   final double subtotal;
   final double itemsDiscount;
@@ -147,6 +203,9 @@ class InvoiceModel {
     this.origin = 'AP',
     this.attachments = const [],
     required this.items,
+    this.payments = const [],
+    this.isDeleted = false,
+    this.deletedAt,
     this.isInterState = false,
     required this.subtotal,
     this.itemsDiscount = 0,
@@ -172,9 +231,15 @@ class InvoiceModel {
     this.pdfUrl = '',
   });
 
-  bool get isPaid => status == 'PAID' || balanceDue <= 0;
-  bool get hasOverMoney => excessAmount > 0 || (amountPaid > grandTotal && grandTotal > 0);
-  double get overMoneyAmount => excessAmount > 0 ? excessAmount : (amountPaid > grandTotal ? amountPaid - grandTotal : 0.0);
+  double get totalReceived => payments.isNotEmpty
+      ? payments.fold(0.0, (sum, p) => sum + p.amount)
+      : amountPaid;
+
+  bool get isPaid => status == 'PAID' || balanceDue <= 0 || (grandTotal > 0 && totalReceived >= grandTotal);
+  bool get hasOverMoney => excessAmount > 0 || (totalReceived > grandTotal && grandTotal > 0);
+  double get overMoneyAmount => excessAmount > 0
+      ? excessAmount
+      : (totalReceived > grandTotal ? totalReceived - grandTotal : 0.0);
 
   factory InvoiceModel.fromJson(Map<String, dynamic> json) {
     var rawItems = json['items'] as List<dynamic>? ?? [];
@@ -208,6 +273,25 @@ class InvoiceModel {
     var rawAttachments = json['attachments'] as List<dynamic>? ?? [];
     List<String> parsedAttachments = rawAttachments.map((a) => a.toString()).toList();
 
+    var rawPayments = json['payments'] as List<dynamic>? ?? [];
+    List<PaymentRecord> parsedPayments = rawPayments
+        .map((p) => PaymentRecord.fromJson(p as Map<String, dynamic>))
+        .toList();
+
+    // Backward compatibility: If no payments array but amountPaid > 0, synthesize a payment record
+    if (parsedPayments.isEmpty && aPaid > 0) {
+      parsedPayments = [
+        PaymentRecord(
+          amount: aPaid,
+          type: json['paymentType']?.toString() ?? 'Cash',
+          date: invDate,
+        )
+      ];
+    }
+
+    final isDel = json['isDeleted'] == true;
+    final delAt = DateTime.tryParse(json['deletedAt']?.toString() ?? '');
+
     return InvoiceModel(
       id: json['_id']?.toString() ?? json['id']?.toString() ?? '',
       invoiceNumber: json['invoiceNumber']?.toString() ?? 'INV-0001',
@@ -219,6 +303,9 @@ class InvoiceModel {
       origin: json['origin']?.toString() ?? 'AP',
       attachments: parsedAttachments,
       items: parsedItems,
+      payments: parsedPayments,
+      isDeleted: isDel,
+      deletedAt: delAt,
       isInterState: json['isInterState'] == true,
       subtotal: (json['subtotal'] as num?)?.toDouble() ?? 0.0,
       itemsDiscount: (json['itemsDiscount'] as num?)?.toDouble() ?? 0.0,
@@ -235,7 +322,7 @@ class InvoiceModel {
       amountPaid: aPaid,
       balanceDue: bDue,
       excessAmount: exAmount,
-      paymentType: json['paymentType']?.toString() ?? 'Cash',
+      paymentType: json['paymentType']?.toString() ?? (parsedPayments.isNotEmpty ? parsedPayments.first.type : 'Cash'),
       description: json['description']?.toString() ?? json['notes']?.toString() ?? '',
       status: json['status']?.toString() ?? 'ISSUED',
       notes: json['notes']?.toString() ?? '',
@@ -258,6 +345,9 @@ class InvoiceModel {
       'origin': origin,
       'attachments': attachments,
       'items': items.map((i) => i.toJson()).toList(),
+      'payments': payments.map((p) => p.toJson()).toList(),
+      'isDeleted': isDeleted,
+      'deletedAt': deletedAt?.toIso8601String(),
       'isInterState': isInterState,
       'subtotal': subtotal,
       'itemsDiscount': itemsDiscount,
@@ -295,6 +385,9 @@ class InvoiceModel {
     String? origin,
     List<String>? attachments,
     List<InvoiceItemModel>? items,
+    List<PaymentRecord>? payments,
+    bool? isDeleted,
+    DateTime? deletedAt,
     bool? isInterState,
     double? subtotal,
     double? itemsDiscount,
@@ -330,6 +423,9 @@ class InvoiceModel {
       origin: origin ?? this.origin,
       attachments: attachments ?? this.attachments,
       items: items ?? this.items,
+      payments: payments ?? this.payments,
+      isDeleted: isDeleted ?? this.isDeleted,
+      deletedAt: deletedAt ?? this.deletedAt,
       isInterState: isInterState ?? this.isInterState,
       subtotal: subtotal ?? this.subtotal,
       itemsDiscount: itemsDiscount ?? this.itemsDiscount,

@@ -229,10 +229,21 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
               if (val == 'edit_num') {
                 _editInvoiceNumberDialog();
               } else if (val == 'delete') {
-                Provider.of<InvoiceProvider>(context, listen: false).deleteInvoice(_invoice.id);
+                final invId = _invoice.id;
+                final invNo = _invoice.invoiceNumber;
+                final invProvider = Provider.of<InvoiceProvider>(context, listen: false);
+                invProvider.deleteInvoice(invId);
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Invoice ${_invoice.invoiceNumber} deleted')),
+                  SnackBar(
+                    content: Text('Sale #$invNo moved to Recycle Bin (kept for 30 days)'),
+                    duration: const Duration(seconds: 5),
+                    action: SnackBarAction(
+                      label: 'Undo',
+                      textColor: Colors.amberAccent,
+                      onPressed: () => invProvider.restoreInvoice(invId),
+                    ),
+                  ),
                 );
               }
             },

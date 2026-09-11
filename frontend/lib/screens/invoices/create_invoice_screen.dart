@@ -89,6 +89,31 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
   bool _termsExpanded = false;
   String _termsAndConditions = '';
 
+  // Multiple payments list
+  final List<PaymentRecord> _payments = [];
+
+  // Origin dropdown options
+  final List<String> _originOptions = [
+    '-',
+    'AP',
+    'ORRISA',
+    'GUJARAT',
+    'KARNATAKA',
+    'TAMIL NADU',
+    'MAHARASHTRA',
+    'WEST BENGAL',
+    'KERALA',
+  ];
+
+  // Payment type options with IMPS
+  final List<String> _paymentTypeOptions = [
+    'Cash',
+    'Bank Transfer',
+    'UPI',
+    'Cheque',
+    'IMPS',
+  ];
+
   // Invoice number prefix — 'NO' means no prefix
   String _invoicePrefix = 'NO';
 
@@ -104,6 +129,9 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     super.initState();
     _invoiceDate = widget.existingInvoice?.invoiceDate ?? DateTime.now();
     _selectedOrigin = (widget.existingInvoice?.origin.isNotEmpty == true) ? widget.existingInvoice!.origin : 'AP';
+    if (!_originOptions.contains(_selectedOrigin) && _selectedOrigin.isNotEmpty) {
+      _originOptions.add(_selectedOrigin);
+    }
 
     final businessProvider = Provider.of<BusinessProvider>(context, listen: false);
     final business = businessProvider.business;
@@ -158,11 +186,24 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
           _knownItemDetails[it.name.trim().toLowerCase()] = draft;
         }
       }
-      _receivedAmountController = TextEditingController(
-        text: widget.existingInvoice!.amountPaid > 0 ? widget.existingInvoice!.amountPaid.toStringAsFixed(2) : '',
-      );
-      _isReceivedChecked = widget.existingInvoice!.amountPaid > 0;
+      if (widget.existingInvoice!.payments.isNotEmpty) {
+        _payments.addAll(widget.existingInvoice!.payments);
+      } else if (widget.existingInvoice!.amountPaid > 0) {
+        _payments.add(PaymentRecord(
+          amount: widget.existingInvoice!.amountPaid,
+          type: widget.existingInvoice!.paymentType.isNotEmpty ? widget.existingInvoice!.paymentType : 'Cash',
+          date: widget.existingInvoice!.invoiceDate,
+        ));
+      }
+      _isReceivedChecked = _payments.isNotEmpty;
       _paymentType = widget.existingInvoice!.paymentType.isNotEmpty ? widget.existingInvoice!.paymentType : 'Cash';
+      if (!_paymentTypeOptions.contains(_paymentType) && _paymentType.isNotEmpty) {
+        _paymentTypeOptions.add(_paymentType);
+      }
+      final totalPaid = _payments.fold<double>(0.0, (s, p) => s + p.amount);
+      _receivedAmountController = TextEditingController(
+        text: totalPaid > 0 ? totalPaid.toStringAsFixed(2) : '',
+      );
     } else if (widget.preselectedCustomer != null) {
       _selectedCustomer = widget.preselectedCustomer;
       _customerNameController = TextEditingController(text: _selectedCustomer!.name);
@@ -687,6 +728,307 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     );
   }
 
+  void _showCustomOriginDialog() {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Text('Enter Custom Origin', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.characters,
+          decoration: const InputDecoration(
+            labelText: 'Origin / State',
+            hintText: 'e.g. TELANGANA, ODISHA, etc.',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E88E5)),
+            onPressed: () {
+              final text = controller.text.trim().toUpperCase();
+              if (text.isNotEmpty) {
+                setState(() {
+                  if (!_originOptions.contains(text)) {
+                    _originOptions.add(text);
+                  }
+                  _selectedOrigin = text;
+                });
+              }
+              Navigator.pop(ctx);
+            },
+            child: const Text('Set Origin'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCustomPaymentTypeDialog({void Function(String)? onAdded}) {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Text('Add Payment Type', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(
+            labelText: 'Payment Mode',
+            hintText: 'e.g. RTGS, NEFT, Card, IMPS...',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E88E5)),
+            onPressed: () {
+              final text = controller.text.trim();
+              if (text.isNotEmpty) {
+                setState(() {
+                  if (!_paymentTypeOptions.contains(text)) {
+                    _paymentTypeOptions.add(text);
+                  }
+                  _paymentType = text;
+                });
+                if (onAdded != null) onAdded(text);
+              }
+              Navigator.pop(ctx);
+            },
+            child: const Text('Add Type'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddOrEditPaymentDialog({int? index}) {
+    HapticFeedback.lightImpact();
+    final isEdit = index != null;
+    final existing = isEdit ? _payments[index] : null;
+    final grandTotal = _computeTotal();
+    final currentReceived = _payments.fold<double>(0.0, (s, p) => s + p.amount);
+    final remainingDue = (grandTotal - currentReceived).clamp(0.0, double.infinity);
+
+    final amountCtrl = TextEditingController(
+      text: existing != null
+          ? (existing.amount == existing.amount.roundToDouble()
+              ? existing.amount.toInt().toString()
+              : existing.amount.toStringAsFixed(2))
+          : (remainingDue > 0
+              ? (remainingDue == remainingDue.roundToDouble()
+                  ? remainingDue.toInt().toString()
+                  : remainingDue.toStringAsFixed(2))
+              : ''),
+    );
+    final notesCtrl = TextEditingController(text: existing?.notes ?? '');
+    DateTime pickedDate = existing?.date ?? DateTime.now();
+    String pickedType = existing?.type ?? _paymentType;
+
+    if (!_paymentTypeOptions.contains(pickedType)) {
+      _paymentTypeOptions.add(pickedType);
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) => Padding(
+          padding: EdgeInsets.only(
+            left: 18,
+            right: 18,
+            top: 18,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 18,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    isEdit ? 'Edit Payment' : 'Add Payment Received',
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 20, color: Color(0xFF64748B)),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // Amount Input
+              TextField(
+                controller: amountCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                autofocus: true,
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                decoration: InputDecoration(
+                  labelText: 'Payment Amount (₹) *',
+                  prefixText: '₹ ',
+                  prefixStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF2563EB)),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Date & Payment Type Row
+              Row(
+                children: [
+                  // Date picker
+                  Expanded(
+                    child: InkWell(
+                      onTap: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: pickedDate,
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2035),
+                        );
+                        if (picked != null) {
+                          setModalState(() => pickedDate = picked);
+                        }
+                      },
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFCBD5E1)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.calendar_today_outlined, size: 16, color: Color(0xFF2563EB)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                DateFormat('dd MMM yyyy').format(pickedDate),
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+
+                  // Payment Type dropdown
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _paymentTypeOptions.contains(pickedType) ? pickedType : 'Cash',
+                          isExpanded: true,
+                          items: [
+                            ..._paymentTypeOptions.map((type) => DropdownMenuItem(
+                              value: type,
+                              child: Text(
+                                type == 'IMPS'
+                                    ? '⚡ IMPS'
+                                    : (type == 'Cash'
+                                        ? '💵 Cash'
+                                        : (type == 'UPI'
+                                            ? '📱 UPI'
+                                            : (type == 'Bank Transfer'
+                                                ? '🏦 Bank'
+                                                : (type == 'Cheque' ? '📝 Cheque' : '💳 $type')))),
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                              ),
+                            )),
+                            const DropdownMenuItem(
+                              value: '__custom__',
+                              child: Text('+ New Type...', style: TextStyle(fontSize: 12, color: Color(0xFF2563EB), fontWeight: FontWeight.w700)),
+                            ),
+                          ],
+                          onChanged: (val) {
+                            if (val == '__custom__') {
+                              _showCustomPaymentTypeDialog(onAdded: (newType) {
+                                setModalState(() => pickedType = newType);
+                              });
+                            } else if (val != null) {
+                              setModalState(() => pickedType = val);
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // Notes / Ref No
+              TextField(
+                controller: notesCtrl,
+                style: const TextStyle(fontSize: 13),
+                decoration: InputDecoration(
+                  labelText: 'Notes / Reference (Optional)',
+                  hintText: 'e.g. IMPS ref, Cheque no, Txn ID...',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Save Button
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1E88E5),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: () {
+                    final amt = double.tryParse(amountCtrl.text.trim()) ?? 0.0;
+                    if (amt <= 0) return;
+
+                    final record = PaymentRecord(
+                      id: existing?.id,
+                      amount: amt,
+                      type: pickedType,
+                      date: pickedDate,
+                      notes: notesCtrl.text.trim(),
+                    );
+
+                    setState(() {
+                      if (isEdit) {
+                        _payments[index] = record;
+                      } else {
+                        _payments.add(record);
+                      }
+                      _isReceivedChecked = _payments.isNotEmpty;
+                    });
+                    Navigator.pop(ctx);
+                  },
+                  child: Text(
+                    isEdit ? 'Update Payment' : 'Add Payment',
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   void _saveSale() async {
     final name = _customerNameController.text.trim();
@@ -757,8 +1099,14 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     // ─────────────────────────────────────────────────────────────────────
 
     final rawItems = _items.map((it) => it.toMap()).toList();
+    final totalRec = _payments.fold<double>(0.0, (s, p) => s + p.amount);
     final receivedInput = double.tryParse(_receivedAmountController.text.trim()) ?? 0.0;
-    final amountPaid = _isReceivedChecked ? receivedInput : 0.0;
+    final amountPaid = _payments.isNotEmpty ? totalRec : (_isReceivedChecked ? receivedInput : 0.0);
+    final finalPayments = _payments.isNotEmpty
+        ? _payments
+        : (amountPaid > 0
+            ? [PaymentRecord(amount: amountPaid, type: _paymentType, date: _invoiceDate)]
+            : <PaymentRecord>[]);
 
     // Upload attached images to Cloudinary
     final uploadedUrls = <String>[];
@@ -793,10 +1141,11 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
         rawItems: rawItems,
         invoiceNumber: finalInvoiceNo,
         invoiceDate: _invoiceDate,
-        origin: _selectedOrigin,
+        origin: _selectedOrigin == '-' ? '' : _selectedOrigin,
         attachments: uploadedUrls,
         amountPaid: amountPaid,
-        paymentType: _paymentType,
+        payments: finalPayments,
+        paymentType: finalPayments.isNotEmpty ? finalPayments.first.type : _paymentType,
         description: _descriptionController.text.trim(),
         termsAndConditions: _termsAndConditions,
       );
@@ -844,8 +1193,9 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     final grandTotal = _computeTotal();
     final totalDiscount = _computeTotalDiscount();
     final totalTax = _computeTotalTax();
+    final totalPaymentsSum = _payments.fold<double>(0.0, (s, p) => s + p.amount);
     final receivedInput = double.tryParse(_receivedAmountController.text.trim()) ?? 0.0;
-    final amountPaid = _isReceivedChecked ? receivedInput : 0.0;
+    final amountPaid = _payments.isNotEmpty ? totalPaymentsSum : (_isReceivedChecked ? receivedInput : 0.0);
     final balanceDue = (grandTotal - amountPaid).clamp(0.0, double.infinity);
     final overMoney = amountPaid > grandTotal ? amountPaid - grandTotal : 0.0;
 
@@ -976,22 +1326,46 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Origin', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Origin', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
+                            GestureDetector(
+                              onTap: _showCustomOriginDialog,
+                              child: const Text('+ Custom', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF2563EB))),
+                            ),
+                          ],
+                        ),
                         const SizedBox(height: 2),
                         DropdownButtonHideUnderline(
                           child: DropdownButton<String>(
-                            value: _selectedOrigin,
+                            value: _originOptions.contains(_selectedOrigin) ? _selectedOrigin : _originOptions.first,
                             isDense: true,
+                            isExpanded: true,
                             icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF2563EB), size: 18),
                             style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
-                            items: const [
-                              DropdownMenuItem(value: 'AP', child: Text('AP (Andhra)')),
-                              DropdownMenuItem(value: 'ORRISA', child: Text('ORRISA')),
-                              DropdownMenuItem(value: 'GUJARAT', child: Text('GUJARAT')),
-                              DropdownMenuItem(value: 'KARNATAKA', child: Text('KARNATAKA')),
+                            items: [
+                              ..._originOptions.map((orig) => DropdownMenuItem(
+                                value: orig,
+                                child: Text(
+                                  orig == '-' ? '- (None)' : orig,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: orig == '-' ? const Color(0xFF94A3B8) : const Color(0xFF1E293B),
+                                  ),
+                                ),
+                              )),
+                              const DropdownMenuItem(
+                                value: '__CUSTOM_ORIGIN__',
+                                child: Text('+ Custom...', style: TextStyle(fontSize: 12, color: Color(0xFF2563EB), fontWeight: FontWeight.w700)),
+                              ),
                             ],
                             onChanged: (val) {
-                              if (val != null) setState(() => _selectedOrigin = val);
+                              if (val == '__CUSTOM_ORIGIN__') {
+                                _showCustomOriginDialog();
+                              } else if (val != null) {
+                                setState(() => _selectedOrigin = val);
+                              }
                             },
                           ),
                         ),
@@ -1254,6 +1628,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                 border: Border.all(color: const Color(0xFFE2E8F0)),
               ),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Total Amount
                   Row(
@@ -1270,46 +1645,173 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                     ],
                   ),
 
+                  // Payments Received section
+                  if (_payments.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                    const SizedBox(height: 10),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'PAYMENTS RECEIVED (${_payments.length})',
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF64748B), letterSpacing: 0.5),
+                        ),
+                        Text(
+                          CurrencyFormatter.format(totalPaymentsSum),
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF16A34A)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    ListView.separated(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: _payments.length,
+                      separatorBuilder: (_, _) => const Divider(height: 1, color: Color(0xFFF8FAFC)),
+                      itemBuilder: (ctx, idx) {
+                        final p = _payments[idx];
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Row(
+                            children: [
+                              // Amount
+                              Text(
+                                CurrencyFormatter.format(p.amount),
+                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
+                              ),
+                              const SizedBox(width: 10),
+                              // Type badge
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                                ),
+                                child: Text(
+                                  p.type,
+                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF475569)),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              // Date
+                              Text(
+                                DateFormat('dd MMM').format(p.date),
+                                style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                              ),
+                              const Spacer(),
+                              // Edit button
+                              InkWell(
+                                onTap: () => _showAddOrEditPaymentDialog(index: idx),
+                                borderRadius: BorderRadius.circular(4),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(4),
+                                  child: Icon(Icons.edit_outlined, size: 16, color: Color(0xFF64748B)),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              // Delete button
+                              InkWell(
+                                onTap: () {
+                                  setState(() {
+                                    _payments.removeAt(idx);
+                                    _isReceivedChecked = _payments.isNotEmpty;
+                                    final sum = _payments.fold<double>(0.0, (s, item) => s + item.amount);
+                                    _receivedAmountController.text = sum > 0 ? sum.toStringAsFixed(2) : '';
+                                  });
+                                },
+                                borderRadius: BorderRadius.circular(4),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(4),
+                                  child: Icon(Icons.delete_outline, size: 16, color: Color(0xFFEF4444)),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+
+                  const SizedBox(height: 10),
+                  // "+ Add Payment" button
+                  InkWell(
+                    onTap: () => _showAddOrEditPaymentDialog(),
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.add_circle_outline, size: 16, color: Color(0xFF1E88E5)),
+                          SizedBox(width: 6),
+                          Text(
+                            '+ Add Payment',
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF1E88E5)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+                  const Divider(height: 1, color: Color(0xFFF1F5F9)),
                   const SizedBox(height: 12),
 
-                  // Received Checkbox & Amount
+                  // Received row
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Checkbox(
-                        value: _isReceivedChecked,
-                        activeColor: const Color(0xFF1E88E5),
-                        onChanged: (val) {
-                          setState(() {
-                            _isReceivedChecked = val ?? false;
-                            if (_isReceivedChecked && _receivedAmountController.text.isEmpty) {
-                              _receivedAmountController.text = grandTotal > 0 ? grandTotal.toStringAsFixed(2) : '';
-                            }
-                          });
-                        },
-                      ),
-                      const Text(
-                        'Received',
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
-                      ),
-                      const Spacer(),
-                      const Text('₹ ', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                      SizedBox(
-                        width: 110,
-                        child: TextField(
-                          controller: _receivedAmountController,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          enabled: _isReceivedChecked,
-                          textAlign: TextAlign.right,
-                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
-                          decoration: const InputDecoration(
-                            hintText: '0.00',
-                            isDense: true,
-                            border: UnderlineInputBorder(),
-                            contentPadding: EdgeInsets.symmetric(vertical: 4),
+                      Row(
+                        children: [
+                          if (_payments.isEmpty)
+                            Checkbox(
+                              value: _isReceivedChecked,
+                              activeColor: const Color(0xFF1E88E5),
+                              onChanged: (val) {
+                                setState(() {
+                                  _isReceivedChecked = val ?? false;
+                                  if (_isReceivedChecked && _receivedAmountController.text.isEmpty) {
+                                    _receivedAmountController.text = grandTotal > 0 ? grandTotal.toStringAsFixed(2) : '';
+                                  }
+                                });
+                              },
+                            ),
+                          const Text(
+                            'Received',
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
                           ),
-                          onChanged: (_) => setState(() {}),
-                        ),
+                        ],
                       ),
+                      if (_payments.isNotEmpty)
+                        Text(
+                          CurrencyFormatter.format(amountPaid),
+                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
+                        )
+                      else
+                        Row(
+                          children: [
+                            const Text('₹ ', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                            SizedBox(
+                              width: 110,
+                              child: TextField(
+                                controller: _receivedAmountController,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                enabled: _isReceivedChecked,
+                                textAlign: TextAlign.right,
+                                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
+                                decoration: const InputDecoration(
+                                  hintText: '0.00',
+                                  isDense: true,
+                                  border: UnderlineInputBorder(),
+                                  contentPadding: EdgeInsets.symmetric(vertical: 4),
+                                ),
+                                onChanged: (_) => setState(() {}),
+                              ),
+                            ),
+                          ],
+                        ),
                     ],
                   ),
 
@@ -1366,7 +1868,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                   const Divider(height: 1, color: Color(0xFFF1F5F9)),
                   const SizedBox(height: 12),
 
-                  // Payment Type Selector
+                  // Payment Type Selector + Add Payment Type button
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -1379,21 +1881,51 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                         ),
                         child: DropdownButtonHideUnderline(
                           child: DropdownButton<String>(
-                            value: _paymentType,
+                            value: _paymentTypeOptions.contains(_paymentType) ? _paymentType : _paymentTypeOptions.first,
                             isDense: true,
-                            items: const [
-                              DropdownMenuItem(value: 'Cash', child: Text('💵 Cash')),
-                              DropdownMenuItem(value: 'Bank Transfer', child: Text('🏦 Bank Transfer')),
-                              DropdownMenuItem(value: 'UPI', child: Text('📱 UPI / GPay')),
-                              DropdownMenuItem(value: 'Cheque', child: Text('📝 Cheque')),
+                            items: [
+                              ..._paymentTypeOptions.map((type) {
+                                String icon = '💵';
+                                if (type.toLowerCase().contains('bank')) {
+                                  icon = '🏦';
+                                } else if (type.toLowerCase().contains('upi')) {
+                                  icon = '📱';
+                                } else if (type.toLowerCase().contains('cheque')) {
+                                  icon = '📝';
+                                } else if (type.toLowerCase().contains('imps')) {
+                                  icon = '⚡';
+                                } else {
+                                  icon = '💳';
+                                }
+                                return DropdownMenuItem(
+                                  value: type,
+                                  child: Text('$icon $type'),
+                                );
+                              }),
+                              const DropdownMenuItem(
+                                value: '__CUSTOM_TYPE__',
+                                child: Text('+ Add Type...', style: TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.w700)),
+                              ),
                             ],
                             onChanged: (val) {
-                              if (val != null) setState(() => _paymentType = val);
+                              if (val == '__CUSTOM_TYPE__') {
+                                _showCustomPaymentTypeDialog();
+                              } else if (val != null) {
+                                setState(() => _paymentType = val);
+                              }
                             },
                           ),
                         ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 6),
+                  InkWell(
+                    onTap: () => _showCustomPaymentTypeDialog(),
+                    child: const Text(
+                      '+ Add Payment Type',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF1E88E5)),
+                    ),
                   ),
                 ],
               ),

@@ -18,7 +18,8 @@ import '../invoices/invoice_detail_screen.dart';
 import '../invoices/invoice_pdf_preview_screen.dart';
 import 'add_edit_customer_screen.dart';
 import 'party_statement_screen.dart';
-import '../ledger/ledger_screen.dart';
+import 'recycle_bin_screen.dart';
+import '../ledger/party_ledger_sheet_screen.dart';
 
 class PartyDetailsScreen extends StatefulWidget {
   final CustomerModel customer;
@@ -118,7 +119,16 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
               } else if (val == 'party_ledger') {
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => LedgerScreen(initialParty: liveCustomer),
+                    builder: (_) => PartyLedgerSheetScreen(party: liveCustomer),
+                  ),
+                );
+              } else if (val == 'recycle_bin') {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => RecycleBinScreen(
+                      customerId: liveCustomer.id,
+                      customerName: liveCustomer.name,
+                    ),
                   ),
                 );
               }
@@ -151,6 +161,16 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
                     Icon(Icons.picture_as_pdf_outlined, color: Color(0xFF059669), size: 20),
                     SizedBox(width: 10),
                     Text('Send PDF', style: TextStyle(fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'recycle_bin',
+                child: Row(
+                  children: [
+                    Icon(Icons.auto_delete_outlined, color: Color(0xFFD97706), size: 20),
+                    SizedBox(width: 10),
+                    Text('Recycle Bin (30 Days)', style: TextStyle(fontWeight: FontWeight.w600)),
                   ],
                 ),
               ),
@@ -902,7 +922,23 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
                     if (action == 'mark_paid') {
                       invoiceProvider.markInvoiceAsPaid(invoice.id);
                     } else if (action == 'delete') {
-                      invoiceProvider.deleteInvoice(invoice.id);
+                      final invId = invoice.id;
+                      final invNo = invoice.invoiceNumber;
+                      invoiceProvider.deleteInvoice(invId);
+                      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Sale #$invNo moved to Recycle Bin (kept for 30 days)'),
+                          duration: const Duration(seconds: 5),
+                          action: SnackBarAction(
+                            label: 'Undo',
+                            textColor: Colors.amberAccent,
+                            onPressed: () {
+                              invoiceProvider.restoreInvoice(invId);
+                            },
+                          ),
+                        ),
+                      );
                     }
                   },
                   itemBuilder: (_) => [
