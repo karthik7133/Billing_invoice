@@ -101,11 +101,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _demoLogin() {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    authProvider.loginAsDemo();
-  }
-
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
@@ -373,24 +368,6 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
 
-                      const SizedBox(height: 12),
-
-                      SizedBox(
-                        width: double.infinity,
-                        height: 46,
-                        child: OutlinedButton.icon(
-                          onPressed: _demoLogin,
-                          style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                          icon: const Icon(Icons.bolt, color: AppColors.accent, size: 20),
-                          label: const Text(
-                            'EXPLORE INVOICING DEMO (1-CLICK)',
-                            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
-                          ),
-                        ),
-                      ),
                     ],
                   ),
                 ),
