@@ -209,10 +209,30 @@ class _XlsExportOptionsSheetState extends State<XlsExportOptionsSheet> {
       final rawName = _fileNameController.text.trim();
       final filename = rawName.isEmpty ? 'Billing_Ledger.xlsx' : (rawName.endsWith('.xlsx') ? rawName : '$rawName.xlsx');
 
-      await ShareService.shareXlsFile(
+      final opened = await ShareService.openXlsFile(
         bytes,
         filename: filename,
-        subject: 'Excel Ledger Export - ${widget.business.businessName}',
+      );
+
+      messenger.showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  opened
+                      ? 'Excel opened: $filename'
+                      : 'Excel saved: $filename',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: const Color(0xFF059669),
+          duration: const Duration(seconds: 4),
+        ),
       );
     } catch (e) {
       PdfProgressDialog.hide();

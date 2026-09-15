@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:open_filex/open_filex.dart';
 import '../core/utils/platform_helper.dart';
 import '../models/invoice_model.dart';
 import '../widgets/pdf_progress_dialog.dart';
@@ -54,9 +55,9 @@ class ShareService {
     );
   }
 
-  /// Opens or saves the XLS file.
-  /// On Windows: saves to Downloads and opens with the default app via cmd /c start.
-  /// On Android/iOS: uses share sheet (open_filex removed to avoid Windows crash).
+  /// Opens the XLS file directly in Microsoft Excel, Google Sheets, or WPS Office.
+  /// On Windows: saves to Downloads and opens with default app via cmd /c start.
+  /// On Android/iOS: opens via OpenFilex, falling back to share sheet if no viewer is installed.
   static Future<bool> openXlsFile(
     Uint8List bytes, {
     required String filename,
@@ -66,11 +67,28 @@ class ShareService {
       if (PlatformHelper.isWindows) {
         return await _openFileOnWindows(bytes, sanitizedName);
       }
-      // Android / iOS — fall through to share sheet
+
+      final tempDir = await getTemporaryDirectory();
+      final file = File('${tempDir.path}/$sanitizedName');
+      await file.writeAsBytes(bytes, flush: true);
+
+      final result = await OpenFilex.open(
+        file.path,
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+
+      if (result.type == ResultType.done) {
+        return true;
+      }
+
+      // If opening directly failed (e.g. no office viewer installed), fallback to share sheet
       await shareXlsFile(bytes, filename: sanitizedName);
-      return true;
-    } catch (_) {
-      await shareXlsFile(bytes, filename: sanitizedName);
+      return false;
+    } catch (e) {
+      debugPrint('[ShareService] Error opening XLS: $e');
+      try {
+        await shareXlsFile(bytes, filename: sanitizedName);
+      } catch (_) {}
       return false;
     }
   }

@@ -594,7 +594,7 @@ class _PartyLedgerSheetScreenState extends State<PartyLedgerSheetScreen> {
       final dateTag = DateFormat('ddMMMyyyy').format(DateTime.now());
       final filename = 'Ledger_${cleanName}_$dateTag.xlsx';
 
-      await ShareService.shareXlsFile(
+      final opened = await ShareService.openXlsFile(
         bytes,
         filename: filename,
       );
@@ -602,8 +602,22 @@ class _PartyLedgerSheetScreenState extends State<PartyLedgerSheetScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Excel exported: $filename'),
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    opened
+                        ? 'Excel opened: $filename'
+                        : 'Excel saved: $filename',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
             backgroundColor: const Color(0xFF059669),
+            duration: const Duration(seconds: 4),
           ),
         );
       }
