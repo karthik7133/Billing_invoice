@@ -12,6 +12,7 @@ import '../../providers/invoice_provider.dart';
 import '../../services/excel_export_service.dart';
 import '../../services/share_service.dart';
 import '../../widgets/party_xls_save_sheet.dart';
+import '../../widgets/desktop_container.dart';
 import 'party_ledger_sheet_screen.dart';
 
 class LedgerScreen extends StatefulWidget {
@@ -286,7 +287,9 @@ class _LedgerScreenState extends State<LedgerScreen> {
           SizedBox(width: 10),
         ],
       ),
-      body: Column(
+      body: DesktopContainer(
+        maxWidth: 1100,
+        child: Column(
         children: [
           // ── Date Range Bar ──────────────────────────────────────────────
           _buildDateRangeBar(),
@@ -390,6 +393,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
                   ),
           ),
         ],
+      ),
       ),
     );
   }

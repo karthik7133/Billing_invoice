@@ -4,6 +4,8 @@ import '../../core/constants/app_colors.dart';
 import '../../models/product_model.dart';
 import '../../providers/product_provider.dart';
 import '../../widgets/custom_text_field.dart';
+import '../../widgets/desktop_container.dart';
+import '../../core/utils/platform_helper.dart';
 
 class AddEditProductScreen extends StatefulWidget {
   final ProductModel? product;
@@ -104,9 +106,11 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
           const SizedBox(width: 6),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
+      body: DesktopContainer(
+        maxWidth: 720,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Form(
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -226,27 +230,31 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
               const SizedBox(height: 24),
 
               // Save Button
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: ElevatedButton.icon(
-                  onPressed: _saveProduct,
-                  icon: const Icon(Icons.check_rounded, size: 20),
-                  label: Text(
-                    isEditing ? 'UPDATE ITEM' : 'SAVE ITEM TO CATALOG',
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF2563EB),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    elevation: 0,
+              Align(
+                alignment: PlatformHelper.isDesktop ? Alignment.centerRight : Alignment.center,
+                child: SizedBox(
+                  width: PlatformHelper.isDesktop ? 230 : double.infinity,
+                  height: 48,
+                  child: ElevatedButton.icon(
+                    onPressed: _saveProduct,
+                    icon: const Icon(Icons.check_rounded, size: 20),
+                    label: Text(
+                      isEditing ? 'UPDATE ITEM' : 'SAVE ITEM TO CATALOG',
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2563EB),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 0,
+                    ),
                   ),
                 ),
               ),
             ],
           ),
         ),
+      ),
       ),
     );
   }

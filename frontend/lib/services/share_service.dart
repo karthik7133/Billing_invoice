@@ -5,7 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:open_filex/open_filex.dart';
+import '../core/utils/platform_helper.dart';
 import '../models/invoice_model.dart';
 import '../widgets/pdf_progress_dialog.dart';
 import 'pdf_invoice_service.dart';
@@ -54,32 +54,44 @@ class ShareService {
     );
   }
 
-  /// Directly opens the XLS file in Microsoft Excel, WPS Office, Google Sheets, or other supported apps.
-  /// If no default app is available or opening fails, falls back to the system share sheet.
+  /// Opens or saves the XLS file.
+  /// On Windows: saves to Downloads and opens with the default app via cmd /c start.
+  /// On Android/iOS: uses share sheet (open_filex removed to avoid Windows crash).
   static Future<bool> openXlsFile(
     Uint8List bytes, {
     required String filename,
   }) async {
+    final sanitizedName = filename.endsWith('.xlsx') ? filename : '$filename.xlsx';
     try {
-      final tempDir = await getTemporaryDirectory();
-      final sanitizedName = filename.endsWith('.xlsx') ? filename : '$filename.xlsx';
-      final file = File('${tempDir.path}/$sanitizedName');
-      await file.writeAsBytes(bytes, flush: true);
-
-      final result = await OpenFilex.open(
-        file.path,
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      );
-
-      if (result.type != ResultType.done) {
-        // Fallback to share sheet so user can still choose an app or save file
-        await shareXlsFile(bytes, filename: sanitizedName);
-        return false;
+      if (PlatformHelper.isWindows) {
+        return await _openFileOnWindows(bytes, sanitizedName);
       }
+      // Android / iOS — fall through to share sheet
+      await shareXlsFile(bytes, filename: sanitizedName);
       return true;
     } catch (_) {
-      final sanitizedName = filename.endsWith('.xlsx') ? filename : '$filename.xlsx';
       await shareXlsFile(bytes, filename: sanitizedName);
+      return false;
+    }
+  }
+
+  /// Windows: save to Downloads folder then open with default application.
+  static Future<bool> _openFileOnWindows(Uint8List bytes, String filename) async {
+    try {
+      final home = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '';
+      final downloadsPath = '$home\\Downloads';
+      final dir = Directory(downloadsPath).existsSync()
+          ? Directory(downloadsPath)
+          : await getTemporaryDirectory();
+
+      final file = File('${dir.path}\\$filename');
+      await file.writeAsBytes(bytes, flush: true);
+
+      // Open with Windows default app (Excel, LibreOffice, etc.)
+      await Process.run('cmd', ['/c', 'start', '', file.path]);
+      return true;
+    } catch (e) {
+      debugPrint('[ShareService] Windows open error: $e');
       return false;
     }
   }
@@ -89,9 +101,16 @@ class ShareService {
     required String filename,
     String? subject,
   }) async {
+    final sanitizedName = filename.endsWith('.xlsx') ? filename : '$filename.xlsx';
+
+    // Windows: no native share sheet — save to Downloads folder instead
+    if (PlatformHelper.isWindows) {
+      await _openFileOnWindows(bytes, sanitizedName);
+      return;
+    }
+
     try {
       final tempDir = await getTemporaryDirectory();
-      final sanitizedName = filename.endsWith('.xlsx') ? filename : '$filename.xlsx';
       final file = File('${tempDir.path}/$sanitizedName');
       await file.writeAsBytes(bytes, flush: true);
 
@@ -108,7 +127,6 @@ class ShareService {
         ),
       );
     } catch (_) {
-      final sanitizedName = filename.endsWith('.xlsx') ? filename : '$filename.xlsx';
       await SharePlus.instance.share(
         ShareParams(
           files: [

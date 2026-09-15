@@ -20,6 +20,8 @@ import 'add_edit_customer_screen.dart';
 import 'party_statement_screen.dart';
 import 'recycle_bin_screen.dart';
 import '../ledger/party_ledger_sheet_screen.dart';
+import '../../widgets/desktop_container.dart';
+import '../../core/utils/platform_helper.dart';
 
 class PartyDetailsScreen extends StatefulWidget {
   final CustomerModel customer;
@@ -189,8 +191,10 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
+      body: DesktopContainer(
+        maxWidth: 1100,
+        child: Column(
+          children: [
           // 1. Top Party Summary Card
           Container(
             width: double.infinity,
@@ -521,8 +525,13 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
             ),
             child: SafeArea(
               top: false,
-              child: Row(
-                children: [
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: PlatformHelper.isDesktop ? 650 : double.infinity,
+                  ),
+                  child: Row(
+                    children: [
                   // Take Payment (Blue Pill)
                   Expanded(
                     child: ElevatedButton(
@@ -587,9 +596,12 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
               ),
             ),
           ),
-        ],
+        ),
       ),
-    );
+      ],
+    ),
+  ),
+);
   }
 
   // ─── Add Action Sheet (Sale Invoice / Purchase Transaction) ────────────────

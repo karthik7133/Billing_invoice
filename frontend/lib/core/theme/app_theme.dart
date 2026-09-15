@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../constants/app_colors.dart';
+import '../utils/platform_helper.dart';
 
 class AppTheme {
   static ThemeData get lightTheme {
     final baseTextTheme = GoogleFonts.interTextTheme();
+    final isDesktop = PlatformHelper.isDesktop;
 
     return ThemeData(
       useMaterial3: true,
+      visualDensity: isDesktop ? VisualDensity.adaptivePlatformDensity : VisualDensity.standard,
       brightness: Brightness.light,
       primaryColor: AppColors.primary,
       scaffoldBackgroundColor: AppColors.background,
@@ -130,8 +133,12 @@ class AppTheme {
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
           foregroundColor: AppColors.textInverse,
-          elevation: 0,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          elevation: isDesktop ? 1 : 0,
+          enabledMouseCursor: isDesktop ? SystemMouseCursors.click : null,
+          padding: EdgeInsets.symmetric(
+            horizontal: isDesktop ? 22 : 20,
+            vertical: isDesktop ? 13 : 14,
+          ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
@@ -146,7 +153,11 @@ class AppTheme {
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.electricBlue,
           side: const BorderSide(color: AppColors.electricBlue, width: 1.3),
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+          enabledMouseCursor: isDesktop ? SystemMouseCursors.click : null,
+          padding: EdgeInsets.symmetric(
+            horizontal: isDesktop ? 20 : 18,
+            vertical: isDesktop ? 12 : 13,
+          ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
@@ -156,6 +167,33 @@ class AppTheme {
           ),
         ),
       ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          enabledMouseCursor: isDesktop ? SystemMouseCursors.click : null,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      ),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        elevation: isDesktop ? 3 : 4,
+        highlightElevation: isDesktop ? 6 : 8,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        mouseCursor: isDesktop ? const WidgetStatePropertyAll(SystemMouseCursors.click) : null,
+      ),
+      scrollbarTheme: isDesktop
+          ? ScrollbarThemeData(
+              thumbVisibility: const WidgetStatePropertyAll(true),
+              thickness: const WidgetStatePropertyAll(7),
+              radius: const Radius.circular(6),
+              thumbColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.hovered) || states.contains(WidgetState.dragged)) {
+                  return const Color(0xFF64748B);
+                }
+                return const Color(0xFFCBD5E1);
+              }),
+            )
+          : null,
       chipTheme: ChipThemeData(
         backgroundColor: AppColors.background,
         side: const BorderSide(color: AppColors.border),

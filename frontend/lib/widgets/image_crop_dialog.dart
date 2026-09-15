@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 
 enum CropAspectRatio {
   square('1:1 Square', 1.0, Icons.crop_square_rounded),
@@ -39,27 +39,25 @@ class ImageCropDialog extends StatefulWidget {
     this.title = 'Crop & Resize Logo',
   });
 
-  /// Helper to pick an image from source and directly launch full-page crop screen
+  /// Helper to pick an image from file system and directly launch full-page crop screen.
+  /// Works on Windows, Android, iOS, Web, and all Flutter platforms.
   static Future<Uint8List?> pickAndCrop(
     BuildContext context, {
-    ImageSource source = ImageSource.gallery,
     String title = 'Crop & Resize Logo',
   }) async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(
-      source: source,
-      maxWidth: 2048,
-      maxHeight: 2048,
-      imageQuality: 95,
+    final file = await FilePicker.pickFile(
+      type: FileType.image,
+      dialogTitle: 'Select Logo Image',
     );
-    if (picked == null) return null;
+    if (file == null) return null;
+    final fileBytes = await file.readAsBytes();
+    if (fileBytes.isEmpty) return null;
 
-    final bytes = await picked.readAsBytes();
     if (!context.mounted) return null;
 
     return Navigator.of(context).push<Uint8List>(
       MaterialPageRoute(
-        builder: (ctx) => ImageCropDialog(imageBytes: bytes, title: title),
+        builder: (ctx) => ImageCropDialog(imageBytes: fileBytes, title: title),
         fullscreenDialog: true,
       ),
     );

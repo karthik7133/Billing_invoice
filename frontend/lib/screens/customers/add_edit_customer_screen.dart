@@ -6,6 +6,8 @@ import '../../models/customer_model.dart';
 import '../../providers/customer_provider.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../widgets/custom_dropdown.dart';
+import '../../widgets/desktop_container.dart';
+import '../../core/utils/platform_helper.dart';
 
 class AddEditCustomerScreen extends StatefulWidget {
   final CustomerModel? customer;
@@ -129,9 +131,11 @@ class _AddEditCustomerScreenState extends State<AddEditCustomerScreen> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
+      body: DesktopContainer(
+        maxWidth: 720,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Form(
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -378,12 +382,16 @@ class _AddEditCustomerScreenState extends State<AddEditCustomerScreen> {
               const SizedBox(height: 24),
 
               // Save Button
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _saveCustomer,
-                  icon: const Icon(Icons.check),
-                  label: Text(isEditing ? 'UPDATE CUSTOMER' : 'SAVE CUSTOMER'),
+              Align(
+                alignment: PlatformHelper.isDesktop ? Alignment.centerRight : Alignment.center,
+                child: SizedBox(
+                  width: PlatformHelper.isDesktop ? 220 : double.infinity,
+                  height: PlatformHelper.isDesktop ? 44 : null,
+                  child: ElevatedButton.icon(
+                    onPressed: _saveCustomer,
+                    icon: const Icon(Icons.check),
+                    label: Text(isEditing ? 'UPDATE CUSTOMER' : 'SAVE CUSTOMER'),
+                  ),
                 ),
               ),
 
@@ -391,6 +399,7 @@ class _AddEditCustomerScreenState extends State<AddEditCustomerScreen> {
             ],
           ),
         ),
+      ),
       ),
     );
   }

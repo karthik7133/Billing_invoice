@@ -7,6 +7,8 @@ import '../../providers/invoice_provider.dart';
 import '../../widgets/product_card.dart';
 import '../../widgets/empty_state_widget.dart';
 import '../../widgets/cloud_server_status_pill.dart';
+import '../../widgets/desktop_container.dart';
+import '../../core/utils/platform_helper.dart';
 import 'add_edit_product_screen.dart';
 
 class ProductListScreen extends StatefulWidget {
@@ -87,7 +89,9 @@ class _ProductListScreenState extends State<ProductListScreen> {
           const SizedBox(width: 6),
         ],
       ),
-      body: RefreshIndicator(
+      body: DesktopContainer(
+        maxWidth: 1100,
+        child: RefreshIndicator(
         onRefresh: () async {
           final invoiceProvider = Provider.of<InvoiceProvider>(context, listen: false);
           await productProvider.syncItemsFromInvoices(invoiceProvider.allInvoices);
@@ -234,6 +238,10 @@ class _ProductListScreenState extends State<ProductListScreen> {
           ],
         ),
       ),
+      ),
+      floatingActionButtonLocation: PlatformHelper.isDesktop
+          ? FloatingActionButtonLocation.endFloat
+          : FloatingActionButtonLocation.endFloat,
       floatingActionButton: FloatingActionButton.extended(
         heroTag: 'addProductFab',
         onPressed: () {

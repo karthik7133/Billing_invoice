@@ -6,6 +6,8 @@ import '../../providers/customer_provider.dart';
 import '../../widgets/customer_card.dart';
 import '../../widgets/empty_state_widget.dart';
 import '../../widgets/cloud_server_status_pill.dart';
+import '../../widgets/desktop_container.dart';
+import '../../core/utils/platform_helper.dart';
 import 'add_edit_customer_screen.dart';
 import 'party_details_screen.dart';
 
@@ -71,10 +73,12 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
           const SizedBox(width: 6),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: () => customerProvider.fetchCustomers(),
-        child: Column(
-          children: [
+      body: DesktopContainer(
+        maxWidth: 1100,
+        child: RefreshIndicator(
+          onRefresh: () => customerProvider.fetchCustomers(),
+          child: Column(
+            children: [
             // 1. Search Bar
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -194,9 +198,10 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
                     ),
             ),
           ],
+          ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: PlatformHelper.isDesktop ? null : FloatingActionButton(
         heroTag: 'addCustomerFab',
         onPressed: () {
           Navigator.of(context).push(

@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -366,8 +366,8 @@ class PdfInvoiceService {
                     ),
                     _buildTableCell(qtyStr, align: pw.TextAlign.center, color: darkText),
                     _buildTableCell(unitStr, align: pw.TextAlign.center, color: darkText),
-                    _buildTableCell('₹ ${CurrencyFormatter.format(item.rate, showSymbol: false)}', align: pw.TextAlign.right, color: darkText),
-                    _buildTableCell('₹ ${CurrencyFormatter.format(item.total, showSymbol: false)}', align: pw.TextAlign.right, color: darkText),
+                    _buildTableCell('Rs. ${CurrencyFormatter.format(item.rate, showSymbol: false)}', align: pw.TextAlign.right, color: darkText),
+                    _buildTableCell('Rs. ${CurrencyFormatter.format(item.total, showSymbol: false)}', align: pw.TextAlign.right, color: darkText),
                   ],
                 );
               }),
@@ -407,7 +407,7 @@ class PdfInvoiceService {
                   width: 88,
                   alignment: pw.Alignment.centerRight,
                   child: pw.Text(
-                    '₹ ${CurrencyFormatter.format(grandTotal, showSymbol: false)}',
+                    'Rs. ${CurrencyFormatter.format(grandTotal, showSymbol: false)}',
                     style: pw.TextStyle(font: fontBold, fontSize: 10.5, color: darkText),
                   ),
                 ),
@@ -458,7 +458,7 @@ class PdfInvoiceService {
                     // Sub Total
                     _buildSummaryRow(
                       'Sub Total',
-                      '₹ ${CurrencyFormatter.format(invoice.subtotal > 0 ? invoice.subtotal : grandTotal, showSymbol: false)}',
+                      'Rs. ${CurrencyFormatter.format(invoice.subtotal > 0 ? invoice.subtotal : grandTotal, showSymbol: false)}',
                       fontRegular: fontRegular,
                       fontBold: fontBold,
                     ),
@@ -476,7 +476,7 @@ class PdfInvoiceService {
                             style: pw.TextStyle(font: fontBold, fontSize: 10.5, color: PdfColors.white),
                           ),
                           pw.Text(
-                            '₹ ${CurrencyFormatter.format(grandTotal, showSymbol: false)}',
+                            'Rs. ${CurrencyFormatter.format(grandTotal, showSymbol: false)}',
                             style: pw.TextStyle(font: fontBold, fontSize: 10.5, color: PdfColors.white),
                           ),
                         ],
@@ -486,7 +486,7 @@ class PdfInvoiceService {
                     // Received
                     _buildSummaryRow(
                       'Received',
-                      '₹ ${CurrencyFormatter.format(received, showSymbol: false)}',
+                      'Rs. ${CurrencyFormatter.format(received, showSymbol: false)}',
                       fontRegular: fontRegular,
                       fontBold: fontBold,
                     ),
@@ -494,7 +494,7 @@ class PdfInvoiceService {
                     // Balance
                     _buildSummaryRow(
                       'Balance',
-                      '₹ ${CurrencyFormatter.format(displayBalance, showSymbol: false)}',
+                      'Rs. ${CurrencyFormatter.format(displayBalance, showSymbol: false)}',
                       fontRegular: fontRegular,
                       fontBold: fontBold,
                     ),
@@ -513,7 +513,7 @@ class PdfInvoiceService {
                               style: pw.TextStyle(font: fontBold, fontSize: 9.5, color: darkText),
                             ),
                             pw.Text(
-                              '₹ ${CurrencyFormatter.format(excessAmount, showSymbol: false)}',
+                              'Rs. ${CurrencyFormatter.format(excessAmount, showSymbol: false)}',
                               style: pw.TextStyle(font: fontBold, fontSize: 10, color: brandPurple),
                             ),
                           ],
@@ -855,9 +855,9 @@ class PdfInvoiceService {
                       _txnCell('-', fontBold, align: pw.TextAlign.center),
                       _txnCell('-', fontBold, align: pw.TextAlign.right),
                       _txnCell('-', fontBold, align: pw.TextAlign.right),
-                      _txnCell('₹ ${CurrencyFormatter.format(initialOpening.abs(), showSymbol: false)}', fontBold, align: pw.TextAlign.right),
-                      _txnCell(recBal > 0 ? '₹ ${CurrencyFormatter.format(recBal, showSymbol: false)}' : '₹ 0.00', fontBold, align: pw.TextAlign.right),
-                      _txnCell(payBal > 0 ? '₹ ${CurrencyFormatter.format(payBal, showSymbol: false)}' : '', fontBold, align: pw.TextAlign.right),
+                      _txnCell('Rs. ${CurrencyFormatter.format(initialOpening.abs(), showSymbol: false)}', fontBold, align: pw.TextAlign.right),
+                      _txnCell(recBal > 0 ? 'Rs. ${CurrencyFormatter.format(recBal, showSymbol: false)}' : 'Rs. 0.00', fontBold, align: pw.TextAlign.right),
+                      _txnCell(payBal > 0 ? 'Rs. ${CurrencyFormatter.format(payBal, showSymbol: false)}' : '', fontBold, align: pw.TextAlign.right),
                     ],
                   ),
                 ],
@@ -894,11 +894,11 @@ class PdfInvoiceService {
                           _txnCell(dfmt.format(inv.invoiceDate), fontBold),
                           _txnCell('Sale', fontBold),
                           _txnCell(formatBillNo(inv.invoiceNumber), fontBold, align: pw.TextAlign.center),
-                          _txnCell('₹ ${CurrencyFormatter.format(txnTotal, showSymbol: false)}', fontBold, align: pw.TextAlign.right),
-                          _txnCell('₹ ${CurrencyFormatter.format(txnReceived, showSymbol: false)}', fontBold, align: pw.TextAlign.right),
-                          _txnCell('₹ ${CurrencyFormatter.format(txnBalance, showSymbol: false)}', fontBold, align: pw.TextAlign.right),
-                          _txnCell('₹ ${CurrencyFormatter.format(receivableBalance, showSymbol: false)}', fontBold, align: pw.TextAlign.right),
-                          _txnCell(payableBalance > 0 ? '₹ ${CurrencyFormatter.format(payableBalance, showSymbol: false)}' : '', fontBold, align: pw.TextAlign.right),
+                          _txnCell('Rs. ${CurrencyFormatter.format(txnTotal, showSymbol: false)}', fontBold, align: pw.TextAlign.right),
+                          _txnCell('Rs. ${CurrencyFormatter.format(txnReceived, showSymbol: false)}', fontBold, align: pw.TextAlign.right),
+                          _txnCell('Rs. ${CurrencyFormatter.format(txnBalance, showSymbol: false)}', fontBold, align: pw.TextAlign.right),
+                          _txnCell('Rs. ${CurrencyFormatter.format(receivableBalance, showSymbol: false)}', fontBold, align: pw.TextAlign.right),
+                          _txnCell(payableBalance > 0 ? 'Rs. ${CurrencyFormatter.format(payableBalance, showSymbol: false)}' : '', fontBold, align: pw.TextAlign.right),
                         ],
                       ),
                     ],
@@ -952,8 +952,8 @@ class PdfInvoiceService {
                                 _itemCell(it.name.toUpperCase(), fontRegular),
                                 _itemCell(formatQty(it.quantity), fontRegular, align: pw.TextAlign.right),
                                 _itemCell(it.unit.isNotEmpty ? it.unit : '-', fontRegular, align: pw.TextAlign.center),
-                                _itemCell('₹ ${CurrencyFormatter.format(it.rate, showSymbol: false)}', fontRegular, align: pw.TextAlign.right),
-                                _itemCell('₹ ${CurrencyFormatter.format(it.total, showSymbol: false)}', fontRegular, align: pw.TextAlign.right),
+                                _itemCell('Rs. ${CurrencyFormatter.format(it.rate, showSymbol: false)}', fontRegular, align: pw.TextAlign.right),
+                                _itemCell('Rs. ${CurrencyFormatter.format(it.total, showSymbol: false)}', fontRegular, align: pw.TextAlign.right),
                               ],
                             );
                           }),
@@ -972,7 +972,7 @@ class PdfInvoiceService {
                               _itemCell(formatQty(totalItemQty), fontBold, align: pw.TextAlign.right, isBold: true),
                               _itemCell('', fontRegular),
                               _itemCell('', fontRegular),
-                              _itemCell('₹ ${CurrencyFormatter.format(inv.grandTotal, showSymbol: false)}', fontBold, align: pw.TextAlign.right, isBold: true),
+                              _itemCell('Rs. ${CurrencyFormatter.format(inv.grandTotal, showSymbol: false)}', fontBold, align: pw.TextAlign.right, isBold: true),
                             ],
                           ),
                         ],
@@ -988,7 +988,7 @@ class PdfInvoiceService {
                           mainAxisSize: pw.MainAxisSize.min,
                           children: [
                             pw.Text('Sub Total: ', style: pw.TextStyle(font: fontRegular, fontSize: 9, color: PdfColors.black)),
-                            pw.Text('₹ ${CurrencyFormatter.format(inv.grandTotal, showSymbol: false)}', style: pw.TextStyle(font: fontRegular, fontSize: 9, color: PdfColors.black)),
+                            pw.Text('Rs. ${CurrencyFormatter.format(inv.grandTotal, showSymbol: false)}', style: pw.TextStyle(font: fontRegular, fontSize: 9, color: PdfColors.black)),
                           ],
                         ),
                       ),
@@ -1028,10 +1028,10 @@ class PdfInvoiceService {
           contentWidgets.add(
             pw.Text(
               runningBalance > 0
-                  ? 'Total Receivable balance: ₹ ${CurrencyFormatter.format(runningBalance, showSymbol: false)}'
+                  ? 'Total Receivable balance: Rs. ${CurrencyFormatter.format(runningBalance, showSymbol: false)}'
                   : (runningBalance < 0
-                      ? 'Total Payable balance: ₹ ${CurrencyFormatter.format(runningBalance.abs(), showSymbol: false)}'
-                      : 'Total Balance: ₹ 0.00 (Settled)'),
+                      ? 'Total Payable balance: Rs. ${CurrencyFormatter.format(runningBalance.abs(), showSymbol: false)}'
+                      : 'Total Balance: Rs. 0.00 (Settled)'),
               style: pw.TextStyle(
                 font: fontBold,
                 fontSize: 16,
@@ -1347,18 +1347,18 @@ class PdfInvoiceService {
             }
 
             rowCells.add(
-              _txnCell('₹ ${CurrencyFormatter.format(inv.grandTotal, showSymbol: false)}', fontBold, align: pw.TextAlign.right),
+              _txnCell('Rs. ${CurrencyFormatter.format(inv.grandTotal, showSymbol: false)}', fontBold, align: pw.TextAlign.right),
             );
 
             if (showPaymentInfo) {
               rowCells.add(
-                _txnCell('₹ ${CurrencyFormatter.format(inv.amountPaid, showSymbol: false)}', fontRegular, align: pw.TextAlign.right),
+                _txnCell('Rs. ${CurrencyFormatter.format(inv.amountPaid, showSymbol: false)}', fontRegular, align: pw.TextAlign.right),
               );
             }
 
             if (showBalance) {
               rowCells.add(
-                _txnCell('₹ ${CurrencyFormatter.format(inv.balanceDue, showSymbol: false)}', fontBold, align: pw.TextAlign.right),
+                _txnCell('Rs. ${CurrencyFormatter.format(inv.balanceDue, showSymbol: false)}', fontBold, align: pw.TextAlign.right),
               );
             }
 
@@ -1417,17 +1417,17 @@ class PdfInvoiceService {
                       style: pw.TextStyle(font: fontBold, fontSize: 10, color: PdfColors.black),
                     ),
                     pw.Text(
-                      'Billed: ₹ ${CurrencyFormatter.format(totalBilled, showSymbol: false)}',
+                      'Billed: Rs. ${CurrencyFormatter.format(totalBilled, showSymbol: false)}',
                       style: pw.TextStyle(font: fontBold, fontSize: 10, color: PdfColors.black),
                     ),
                     if (showPaymentInfo)
                       pw.Text(
-                        'Received: ₹ ${CurrencyFormatter.format(totalPaid, showSymbol: false)}',
+                        'Received: Rs. ${CurrencyFormatter.format(totalPaid, showSymbol: false)}',
                         style: pw.TextStyle(font: fontBold, fontSize: 10, color: PdfColor.fromHex('#15803D')),
                       ),
                     if (showBalance)
                       pw.Text(
-                        'Pending Due: ₹ ${CurrencyFormatter.format(totalDue, showSymbol: false)}',
+                        'Pending Due: Rs. ${CurrencyFormatter.format(totalDue, showSymbol: false)}',
                         style: pw.TextStyle(
                           font: fontBold,
                           fontSize: 10,

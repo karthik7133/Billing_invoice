@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/indian_states.dart';
 import '../../models/business_model.dart';
@@ -10,6 +10,8 @@ import '../../providers/invoice_provider.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../widgets/custom_dropdown.dart';
 import '../../widgets/image_crop_dialog.dart';
+import '../../widgets/desktop_container.dart';
+import '../../core/utils/platform_helper.dart';
 
 class BusinessProfileScreen extends StatefulWidget {
   const BusinessProfileScreen({super.key});
@@ -100,89 +102,21 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
     _termsController.dispose();
     super.dispose();
   }
-  /// Prompt source (Gallery/Camera), pick image, open interactive ImageCropDialog, and upload cropped logo
+  /// Pick an image using the system file picker (works on Windows, Android, iOS)
+  /// then open the interactive ImageCropDialog to crop/resize before uploading.
   Future<void> _pickAndUploadLogo() async {
     final invoiceProvider = context.read<InvoiceProvider>();
 
-    // Show source picker bottom sheet
-    final ImageSource? source = await showModalBottomSheet<ImageSource>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        padding: const EdgeInsets.all(20),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE2E8F0),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const Text(
-                'Select Logo Source',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
-              ),
-              const SizedBox(height: 14),
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEFF6FF),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.photo_library_rounded, color: Color(0xFF2563EB), size: 22),
-                ),
-                title: const Text('Choose from Gallery', style: TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: const Text('Pick existing company logo or image', style: TextStyle(fontSize: 12)),
-                trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Color(0xFF94A3B8)),
-                onTap: () => Navigator.pop(ctx, ImageSource.gallery),
-              ),
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF0FDF4),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.camera_alt_rounded, color: Color(0xFF16A34A), size: 22),
-                ),
-                title: const Text('Take Photo with Camera', style: TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: const Text('Capture photo of business card, stamp or seal', style: TextStyle(fontSize: 12)),
-                trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Color(0xFF94A3B8)),
-                onTap: () => Navigator.pop(ctx, ImageSource.camera),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    if (source == null) return;
-
     try {
-      final picker = ImagePicker();
-      final XFile? picked = await picker.pickImage(
-        source: source,
-        maxWidth: 2048,
-        maxHeight: 2048,
-        imageQuality: 95,
+      // FilePicker works on all platforms: opens native file dialog on desktop,
+      // gallery on mobile — no camera vs gallery choice needed on desktop.
+      final file = await FilePicker.pickFile(
+        type: FileType.image,
+        dialogTitle: 'Select Company Logo',
       );
-      if (picked == null || !mounted) return;
-
-      final rawBytes = await picked.readAsBytes();
-      if (!mounted) return;
+      if (file == null || !mounted) return;
+      final rawBytes = await file.readAsBytes();
+      if (rawBytes.isEmpty || !mounted) return;
 
       // Launch the interactive ImageCropDialog
       final Uint8List? croppedBytes = await showDialog<Uint8List>(
@@ -441,9 +375,11 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
+      body: DesktopContainer(
+        maxWidth: 820,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Form(
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -690,12 +626,16 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
               const SizedBox(height: 24),
 
               // Save Button
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _saveProfile,
-                  icon: const Icon(Icons.check_circle_outline),
-                  label: const Text('SAVE BUSINESS PROFILE'),
+              Align(
+                alignment: PlatformHelper.isDesktop ? Alignment.centerRight : Alignment.center,
+                child: SizedBox(
+                  width: PlatformHelper.isDesktop ? 260 : double.infinity,
+                  height: PlatformHelper.isDesktop ? 46 : null,
+                  child: ElevatedButton.icon(
+                    onPressed: _saveProfile,
+                    icon: const Icon(Icons.check_circle_outline),
+                    label: const Text('SAVE BUSINESS PROFILE'),
+                  ),
                 ),
               ),
 
@@ -703,6 +643,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
             ],
           ),
         ),
+      ),
       ),
     );
   }

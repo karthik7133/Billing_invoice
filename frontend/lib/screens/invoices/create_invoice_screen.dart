@@ -1,10 +1,9 @@
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import '../../core/constants/app_colors.dart';
 
 import '../../core/utils/currency_formatter.dart';
@@ -15,6 +14,7 @@ import '../../providers/customer_provider.dart';
 import '../../providers/invoice_provider.dart';
 import '../../providers/product_provider.dart';
 import 'invoice_detail_screen.dart';
+import '../../widgets/desktop_container.dart';
 
 class CreateInvoiceScreen extends StatefulWidget {
   final CustomerModel? preselectedCustomer;
@@ -118,8 +118,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
   String _invoicePrefix = 'NO';
 
   final List<_SaleItemDraft> _items = [];
-  final List<XFile> _attachedImages = [];
-  final ImagePicker _imagePicker = ImagePicker();
+  final List<PlatformFile> _attachedImages = [];
 
   // Tracks all item names + details ever entered — used for autocomplete suggestions
   final Map<String, _SaleItemDraft> _knownItemDetails = {};
@@ -254,16 +253,15 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     });
   }
 
-  Future<void> _pickImage(ImageSource source) async {
+  Future<void> _pickImage() async {
     try {
-      final picked = await _imagePicker.pickImage(
-        source: source,
-        imageQuality: 85,
-        maxWidth: 1600,
+      final files = await FilePicker.pickFiles(
+        type: FileType.image,
+        dialogTitle: 'Attach Photo / Receipt',
       );
-      if (picked != null) {
+      if (files.isNotEmpty) {
         setState(() {
-          _attachedImages.add(picked);
+          _attachedImages.addAll(files);
         });
       }
     } catch (e) {
@@ -276,54 +274,10 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
   }
 
   void _showImageSourceSheet() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Add Photo / Receipt',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
-              ),
-              const SizedBox(height: 14),
-              ListTile(
-                leading: const CircleAvatar(
-                  backgroundColor: Color(0xFFEFF6FF),
-                  child: Icon(Icons.camera_alt_outlined, color: Color(0xFF2563EB)),
-                ),
-                title: const Text('Take Photo (Camera)'),
-                subtitle: const Text('Capture invoice, bill or delivery receipt'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _pickImage(ImageSource.camera);
-                },
-              ),
-              ListTile(
-                leading: const CircleAvatar(
-                  backgroundColor: Color(0xFFEFF6FF),
-                  child: Icon(Icons.photo_library_outlined, color: Color(0xFF2563EB)),
-                ),
-                title: const Text('Choose from Gallery'),
-                subtitle: const Text('Upload an existing photo from device'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _pickImage(ImageSource.gallery);
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    _pickImage();
   }
 
-  void _showImagePreviewDialog(XFile file, int index) {
+  void _showImagePreviewDialog(PlatformFile file, int index) {
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
@@ -335,9 +289,9 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
               children: [
                 ClipRRect(
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                  child: kIsWeb
-                      ? Image.network(file.path, fit: BoxFit.contain, height: 320)
-                      : Image.file(File(file.path), fit: BoxFit.contain, height: 320),
+                  child: file.path != null
+                      ? Image.file(File(file.path!), fit: BoxFit.contain, height: 320)
+                      : const SizedBox(height: 320),
                 ),
                 Positioned(
                   top: 8,
@@ -1236,9 +1190,11 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: Column(
+      body: DesktopContainer(
+        maxWidth: 1050,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // 1. Invoice No, Date & Origin Row
@@ -2015,9 +1971,9 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                                       border: Border.all(color: const Color(0xFFCBD5E1)),
                                       borderRadius: BorderRadius.circular(8),
                                     ),
-                                    child: kIsWeb
-                                        ? Image.network(img.path, fit: BoxFit.cover)
-                                        : Image.file(File(img.path), fit: BoxFit.cover),
+                                    child: img.path != null
+                                        ? Image.file(File(img.path!), fit: BoxFit.cover)
+                                        : const Icon(Icons.image_not_supported_outlined),
                                   ),
                                 ),
                               ),
@@ -2086,49 +2042,35 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
           ],
         ),
       ),
+      ),
 
-      // 8. Bottom Bar: Delete | Save (Blue button)
-      bottomNavigationBar: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 16,
-              offset: const Offset(0, -4),
-            ),
-          ],
+      // 8. Bottom Bar: DesktopActionBar (Adapts between mobile full-width and desktop right-aligned)
+      bottomNavigationBar: DesktopActionBar(
+        maxDesktopWidth: 1050,
+        secondaryButton: OutlinedButton(
+          onPressed: () => Navigator.of(context).pop(),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
+            side: const BorderSide(color: Color(0xFFCBD5E1)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+          child: const Text(
+            'Cancel',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+          ),
         ),
-        child: SafeArea(
-          top: false,
-          child: Row(
-            children: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text(
-                  'Cancel',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: _saveSale,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1E88E5), // Vibrant blue Save button
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    elevation: 2,
-                  ),
-                  child: const Text(
-                    'Save Sale',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-                  ),
-                ),
-              ),
-            ],
+        primaryButton: ElevatedButton(
+          onPressed: _saveSale,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF1E88E5), // Vibrant blue Save button
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 13),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            elevation: 2,
+          ),
+          child: const Text(
+            'Save Sale',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
           ),
         ),
       ),

@@ -11,6 +11,8 @@ import '../../services/backend_sync_service.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../widgets/custom_dropdown.dart';
 import '../../widgets/cloud_server_status_pill.dart';
+import '../../widgets/desktop_container.dart';
+import '../../core/utils/platform_helper.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -104,28 +106,34 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
+    final isDesktop = PlatformHelper.isDesktop;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            // 1. Premium Gradient Header with App Branding & Cloud Status
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.only(top: 60, bottom: 32, left: 24, right: 24),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [AppColors.primaryGradientStart, AppColors.primaryGradientEnd],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(32),
-                  bottomRight: Radius.circular(32),
-                ),
+    Widget body = SingleChildScrollView(
+      child: Column(
+        children: [
+          // 1. Premium Gradient Header with App Branding & Cloud Status
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.only(
+              top: isDesktop ? 36 : 60,
+              bottom: isDesktop ? 24 : 32,
+              left: 24,
+              right: 24,
+            ),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [AppColors.primaryGradientStart, AppColors.primaryGradientEnd],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-              child: Column(
+              borderRadius: isDesktop
+                  ? const BorderRadius.vertical(top: Radius.circular(24))
+                  : const BorderRadius.only(
+                      bottomLeft: Radius.circular(32),
+                      bottomRight: Radius.circular(32),
+                    ),
+            ),
+            child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
@@ -167,16 +175,18 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
 
-            const SizedBox(height: 20),
+            if (!isDesktop) const SizedBox(height: 20),
 
             // 2. Auth Card Form
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18),
+              padding: EdgeInsets.symmetric(horizontal: isDesktop ? 0 : 18),
               child: Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: isDesktop
+                      ? const BorderRadius.vertical(bottom: Radius.circular(24))
+                      : BorderRadius.circular(20),
                   border: Border.all(color: const Color(0xFFE2E8F0)),
                   boxShadow: [
                     BoxShadow(
@@ -377,7 +387,34 @@ class _LoginScreenState extends State<LoginScreen> {
             const SizedBox(height: 35),
           ],
         ),
-      ),
+      );
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF1F5F9),
+      body: isDesktop
+          ? Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 20),
+                child: DesktopContainer(
+                  maxWidth: 460,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF1E3A8A).withValues(alpha: 0.12),
+                          blurRadius: 28,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: body,
+                  ),
+                ),
+              ),
+            )
+          : body,
     );
   }
 }

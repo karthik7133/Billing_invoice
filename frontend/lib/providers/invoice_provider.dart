@@ -367,9 +367,10 @@ class InvoiceProvider with ChangeNotifier {
       } else if (file is List<int>) {
         final name = filename ?? 'logo_${DateTime.now().millisecondsSinceEpoch}.png';
         res = await _api.uploadBytes(Endpoints.upload, file, name);
-      } else if (file.path != null && file.path.isNotEmpty) {
-        res = await _api.uploadFile(Endpoints.upload, file.path);
+      } else if (file.path != null && (file.path as String).isNotEmpty) {
+        res = await _api.uploadFile(Endpoints.upload, file.path as String);
       } else {
+        // Fallback: read bytes directly (works for PlatformFile on web/desktop)
         final bytes = await file.readAsBytes();
         res = await _api.uploadBytes(Endpoints.upload, bytes, file.name ?? 'attachment.png');
       }

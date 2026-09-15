@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-import 'package:image_picker/image_picker.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/business_model.dart';
 import '../../providers/auth_provider.dart';
@@ -12,6 +11,8 @@ import '../../providers/invoice_provider.dart';
 import '../../providers/product_provider.dart';
 import '../../services/backend_sync_service.dart';
 import '../../widgets/image_crop_dialog.dart';
+import '../../widgets/desktop_container.dart';
+import '../../core/utils/platform_helper.dart';
 import '../../main.dart' show mainNavigationKey;
 import 'business_profile_screen.dart';
 
@@ -161,7 +162,9 @@ class _ManageCompaniesScreenState extends State<ManageCompaniesScreen>
           ),
         ),
       ),
-      body: TabBarView(
+      body: DesktopContainer(
+        maxWidth: 1000,
+        child: TabBarView(
         controller: _tabController,
         children: [
           // ─── Tab 1: My Companies ──────────────────────────────────────────
@@ -263,6 +266,7 @@ class _ManageCompaniesScreenState extends State<ManageCompaniesScreen>
             ),
           ),
         ],
+      ),
       ),
 
       // ─── Bottom Sticky Action Bar ─────────────────────────────────────────
@@ -644,7 +648,6 @@ class _ManageCompaniesScreenState extends State<ManageCompaniesScreen>
     final invoiceProvider = context.read<InvoiceProvider>();
     final croppedBytes = await ImageCropDialog.pickAndCrop(
       context,
-      source: ImageSource.gallery,
       title: 'Crop Logo for ${company.businessName}',
     );
 
@@ -705,7 +708,12 @@ class _ManageCompaniesScreenState extends State<ManageCompaniesScreen>
       builder: (ctx) => StatefulBuilder(
         builder: (dialogCtx, setModalState) => Padding(
           padding: EdgeInsets.only(bottom: MediaQuery.of(dialogCtx).viewInsets.bottom),
-          child: Container(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: PlatformHelper.isDesktop ? 560 : double.infinity,
+              ),
+              child: Container(
             decoration: const BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -755,7 +763,6 @@ class _ManageCompaniesScreenState extends State<ManageCompaniesScreen>
                               : () async {
                                   final bytes = await ImageCropDialog.pickAndCrop(
                                     dialogCtx,
-                                    source: ImageSource.gallery,
                                     title: 'Crop Logo for New Company',
                                   );
                                   if (bytes != null) {
@@ -798,7 +805,6 @@ class _ManageCompaniesScreenState extends State<ManageCompaniesScreen>
                                     : () async {
                                         final bytes = await ImageCropDialog.pickAndCrop(
                                           dialogCtx,
-                                          source: ImageSource.gallery,
                                           title: 'Crop Logo for New Company',
                                         );
                                         if (bytes != null) {
@@ -962,7 +968,9 @@ class _ManageCompaniesScreenState extends State<ManageCompaniesScreen>
           ),
         ),
       ),
-    );
+    ),
+  ),
+);
   }
 
   // ─── Restore Backup Dialog ────────────────────────────────────────────────

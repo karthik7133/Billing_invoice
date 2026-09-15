@@ -10,6 +10,7 @@ import 'create_invoice_screen.dart';
 import 'invoice_detail_screen.dart';
 import 'invoice_pdf_preview_screen.dart';
 import '../ledger/ledger_screen.dart';
+import '../../widgets/desktop_container.dart';
 
 class InvoiceHistoryScreen extends StatefulWidget {
   const InvoiceHistoryScreen({super.key});
@@ -77,7 +78,9 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
           const SizedBox(width: 6),
         ],
       ),
-      body: Column(
+      body: DesktopContainer(
+        maxWidth: 1100,
+        child: Column(
         children: [
           // 1. Search Bar
           Padding(
@@ -240,7 +243,8 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
                     ),
                   ),
           ),
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/utils/currency_formatter.dart';
+import '../../core/utils/platform_helper.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/business_provider.dart';
 import '../../providers/customer_provider.dart';
@@ -114,6 +115,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (PlatformHelper.isDesktop) {
+      return _buildDesktopLayout(context);
+    }
+
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
@@ -132,6 +137,304 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           }
         },
         onAddTap: () => _showAddActionSheet(context),
+      ),
+    );
+  }
+
+  Widget _buildDesktopLayout(BuildContext context) {
+    final business = context.watch<BusinessProvider>().business;
+    final businessName = business.businessName.isNotEmpty ? business.businessName : 'My Business';
+    final logoUrl = business.logo;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF1F5F9),
+      body: Row(
+        children: [
+          // Desktop Left Navigation Sidebar
+          Container(
+            width: 255,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 10,
+                  offset: const Offset(2, 0),
+                ),
+              ],
+              border: const Border(
+                right: BorderSide(color: Color(0xFFE2E8F0), width: 1),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // 1. Company Brand Header
+                InkWell(
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (ctx) => const BusinessProfileScreen()),
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            gradient: logoUrl.isEmpty
+                                ? const LinearGradient(
+                                    colors: [Color(0xFF2563EB), Color(0xFF1E3A8A)],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  )
+                                : null,
+                            color: logoUrl.isNotEmpty ? Colors.white : null,
+                            borderRadius: BorderRadius.circular(10),
+                            border: logoUrl.isNotEmpty ? Border.all(color: const Color(0xFFE2E8F0)) : null,
+                            image: logoUrl.isNotEmpty
+                                ? DecorationImage(image: NetworkImage(logoUrl), fit: BoxFit.contain)
+                                : null,
+                          ),
+                          child: logoUrl.isEmpty
+                              ? Center(
+                                  child: Text(
+                                    businessName.isNotEmpty ? businessName[0].toUpperCase() : 'B',
+                                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white),
+                                  ),
+                                )
+                              : null,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                businessName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                              ),
+                              const SizedBox(height: 2),
+                              const Text(
+                                'Desktop Edition',
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF2563EB)),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.unfold_more_rounded, size: 18, color: Color(0xFF94A3B8)),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                const SizedBox(height: 12),
+
+                // 2. Quick Action: "Create New Sale" Button (Proper desktop sizing)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const CreateInvoiceScreen()),
+                      );
+                    },
+                    icon: const Icon(Icons.add_circle_outline_rounded, size: 18, color: Colors.white),
+                    label: const Text(
+                      'Create New Sale',
+                      style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.white),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2563EB),
+                      foregroundColor: Colors.white,
+                      elevation: 1,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                // 3. Navigation Items
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    children: [
+                      _buildDesktopNavItem(
+                        index: 0,
+                        icon: Icons.storefront_rounded,
+                        label: 'Home & Parties',
+                      ),
+                      _buildDesktopNavItem(
+                        index: 1,
+                        icon: Icons.bar_chart_rounded,
+                        label: 'Dashboard & Reports',
+                      ),
+                      _buildDesktopNavItem(
+                        index: 2,
+                        icon: Icons.inventory_2_outlined,
+                        label: 'Items Catalog',
+                      ),
+                      _buildDesktopNavItem(
+                        index: 3,
+                        icon: Icons.grid_view_rounded,
+                        label: 'Menu & Settings',
+                      ),
+                      const SizedBox(height: 10),
+                      const Divider(color: Color(0xFFF1F5F9), thickness: 1),
+                      const SizedBox(height: 6),
+                      // Direct shortcuts to Daybook, Invoice History & Manage Companies
+                      _buildDesktopActionItem(
+                        icon: Icons.menu_book_rounded,
+                        label: 'Daybook & Ledger',
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(builder: (_) => const LedgerScreen()),
+                          );
+                        },
+                      ),
+                      _buildDesktopActionItem(
+                        icon: Icons.receipt_long_outlined,
+                        label: 'Invoice History',
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(builder: (_) => const InvoiceHistoryScreen()),
+                          );
+                        },
+                      ),
+                      _buildDesktopActionItem(
+                        icon: Icons.apartment_rounded,
+                        label: 'Manage Companies',
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(builder: (_) => const ManageCompaniesScreen()),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+
+                // 4. Bottom Footer with Cloud Server Pill & Sync
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF8FAFC),
+                    border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+                  ),
+                  child: Row(
+                    children: [
+                      const Expanded(child: CloudServerStatusPill(compact: false)),
+                      IconButton(
+                        icon: const Icon(Icons.sync_rounded, size: 20, color: Color(0xFF64748B)),
+                        tooltip: 'Sync Data',
+                        onPressed: _refreshAllData,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Main Content Area
+          Expanded(
+            child: IndexedStack(
+              index: _currentIndex,
+              children: _screens,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDesktopNavItem({
+    required int index,
+    required IconData icon,
+    required String label,
+  }) {
+    final isSelected = _currentIndex == index;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Material(
+        color: isSelected ? const Color(0xFFEFF6FF) : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () {
+            setState(() => _currentIndex = index);
+            if (index == 2) {
+              try {
+                final invP = context.read<InvoiceProvider>();
+                final prodP = context.read<ProductProvider>();
+                prodP.syncItemsFromInvoices(invP.allInvoices);
+              } catch (_) {}
+            }
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            child: Row(
+              children: [
+                Icon(
+                  icon,
+                  size: 20,
+                  color: isSelected ? const Color(0xFF2563EB) : const Color(0xFF64748B),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                    color: isSelected ? const Color(0xFF2563EB) : const Color(0xFF334155),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDesktopActionItem({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+            child: Row(
+              children: [
+                Icon(icon, size: 19, color: const Color(0xFF64748B)),
+                const SizedBox(width: 12),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF475569),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

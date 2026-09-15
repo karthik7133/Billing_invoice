@@ -6,6 +6,8 @@ import '../../models/invoice_model.dart';
 import '../../providers/invoice_provider.dart';
 import '../../services/share_service.dart';
 import '../../widgets/status_badge.dart';
+import '../../widgets/desktop_container.dart';
+import '../../core/utils/platform_helper.dart';
 import 'invoice_pdf_preview_screen.dart';
 
 class InvoiceDetailScreen extends StatefulWidget {
@@ -272,9 +274,11 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+      body: DesktopContainer(
+        maxWidth: 820,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // 1. Top Status Banner Card
@@ -693,24 +697,29 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
             ],
 
             // 6. PDF Preview & Print Action
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (ctx) => InvoicePdfPreviewScreen(invoice: _invoice),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.picture_as_pdf_outlined),
-                label: const Text('VIEW TAX INVOICE PDF'),
+            Align(
+              alignment: PlatformHelper.isDesktop ? Alignment.centerRight : Alignment.center,
+              child: SizedBox(
+                width: PlatformHelper.isDesktop ? 260 : double.infinity,
+                height: PlatformHelper.isDesktop ? 46 : null,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (ctx) => InvoicePdfPreviewScreen(invoice: _invoice),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.picture_as_pdf_outlined),
+                  label: const Text('VIEW TAX INVOICE PDF'),
+                ),
               ),
             ),
 
             const SizedBox(height: 40),
           ],
         ),
+      ),
       ),
     );
   }

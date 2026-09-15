@@ -23,6 +23,8 @@ import '../invoices/invoice_detail_screen.dart';
 import '../invoices/invoice_history_screen.dart';
 import '../invoices/invoice_pdf_preview_screen.dart';
 import '../ledger/ledger_screen.dart';
+import '../../core/utils/platform_helper.dart';
+import '../../widgets/desktop_container.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -91,34 +93,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ? businessProvider.business.businessName
         : 'My Business';
 
+    final isDesktop = PlatformHelper.isDesktop;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: _buildTopHeader(context, businessName),
-      body: RefreshIndicator(
-        onRefresh: _loadData,
-        child: Column(
-          children: [
-            // 1. Top Segmented Pills (Transaction Details vs Party Details)
-            _buildSegmentedTabSelector(customerProvider.customers.length, invoiceProvider.invoices.length),
+      body: DesktopContainer(
+        maxWidth: 1100,
+        child: RefreshIndicator(
+          onRefresh: _loadData,
+          child: Column(
+            children: [
+              // 1. Top Segmented Pills (Transaction Details vs Party Details)
+              _buildSegmentedTabSelector(customerProvider.customers.length, invoiceProvider.invoices.length),
 
-            // 2. Quick Links Section
-            _buildQuickLinksRow(),
+              // 2. Quick Links Section
+              _buildQuickLinksRow(),
 
-            // 3. Search & Filter Bar
-            _buildSearchBar(),
+              // 3. Search & Filter Bar
+              _buildSearchBar(),
 
-            const SizedBox(height: 4),
+              const SizedBox(height: 4),
 
-            // 4. Main List: Party Details or Transaction Details
-            Expanded(
-              child: _selectedTab == 1
-                  ? _buildPartyDetailsList(customerProvider, invoiceProvider)
-                  : _buildTransactionDetailsList(invoiceProvider),
-            ),
-          ],
+              // 4. Main List: Party Details or Transaction Details
+              Expanded(
+                child: _selectedTab == 1
+                    ? _buildPartyDetailsList(customerProvider, invoiceProvider)
+                    : _buildTransactionDetailsList(invoiceProvider),
+              ),
+            ],
+          ),
         ),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      floatingActionButtonLocation: isDesktop
+          ? FloatingActionButtonLocation.endFloat
+          : FloatingActionButtonLocation.centerFloat,
       floatingActionButton: _buildFloatingActionButton(context),
     );
   }
