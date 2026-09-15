@@ -266,6 +266,67 @@ class ExcelExportService {
 
     int slNo = 1;
 
+    // Pre-build the two background variant style sets (even/odd) outside the loop
+    // to avoid creating thousands of CellStyle objects for large exports.
+    CellStyle makeTextStyle(String bg) => CellStyle(
+      fontSize: 10, fontColorHex: ExcelColor.fromHexString('#1E293B'),
+      backgroundColorHex: ExcelColor.fromHexString(bg),
+      horizontalAlign: HorizontalAlign.Left, verticalAlign: VerticalAlign.Center,
+      bottomBorder: thinBorder,
+    );
+    CellStyle makeCenterStyle(String bg) => CellStyle(
+      fontSize: 10, fontColorHex: ExcelColor.fromHexString('#334155'),
+      backgroundColorHex: ExcelColor.fromHexString(bg),
+      horizontalAlign: HorizontalAlign.Center, verticalAlign: VerticalAlign.Center,
+      bottomBorder: thinBorder,
+    );
+    CellStyle makeNumStyle(String bg) => CellStyle(
+      bold: true, fontSize: 10, fontColorHex: ExcelColor.fromHexString('#0F172A'),
+      backgroundColorHex: ExcelColor.fromHexString(bg),
+      horizontalAlign: HorizontalAlign.Right, verticalAlign: VerticalAlign.Center,
+      bottomBorder: thinBorder,
+    );
+    // Reusable style cache keyed by background
+    final textStyles   = { '#FFFFFF': makeTextStyle('#FFFFFF'),   '#F8FAFC': makeTextStyle('#F8FAFC') };
+    final centerStyles = { '#FFFFFF': makeCenterStyle('#FFFFFF'), '#F8FAFC': makeCenterStyle('#F8FAFC') };
+    final numStyles    = { '#FFFFFF': makeNumStyle('#FFFFFF'),    '#F8FAFC': makeNumStyle('#F8FAFC') };
+    // Paid/due colors vary by invoice value; cache the two common variants per background
+    CellStyle makePaidStyle(String bg, bool hasPaid) => CellStyle(
+      bold: true, fontSize: 10,
+      fontColorHex: ExcelColor.fromHexString(hasPaid ? '#15803D' : '#64748B'),
+      backgroundColorHex: ExcelColor.fromHexString(bg),
+      horizontalAlign: HorizontalAlign.Right, verticalAlign: VerticalAlign.Center,
+      bottomBorder: thinBorder,
+    );
+    CellStyle makeDueStyle(String bg, bool hasDue) => CellStyle(
+      bold: true, fontSize: 10,
+      fontColorHex: ExcelColor.fromHexString(hasDue ? '#B91C1C' : '#64748B'),
+      backgroundColorHex: ExcelColor.fromHexString(bg),
+      horizontalAlign: HorizontalAlign.Right, verticalAlign: VerticalAlign.Center,
+      bottomBorder: thinBorder,
+    );
+    final Map<String, CellStyle> paidStyles = {};
+    final Map<String, CellStyle> dueStyles  = {};
+    // Status (PAID/PARTIAL/DUE) — only 3 variants, independent of background
+    final statusStylePaid = CellStyle(
+      bold: true, fontSize: 9, fontColorHex: ExcelColor.fromHexString('#15803D'),
+      backgroundColorHex: ExcelColor.fromHexString('#DCFCE7'),
+      horizontalAlign: HorizontalAlign.Center, verticalAlign: VerticalAlign.Center,
+      bottomBorder: thinBorder,
+    );
+    final statusStylePartial = CellStyle(
+      bold: true, fontSize: 9, fontColorHex: ExcelColor.fromHexString('#B45309'),
+      backgroundColorHex: ExcelColor.fromHexString('#FEF3C7'),
+      horizontalAlign: HorizontalAlign.Center, verticalAlign: VerticalAlign.Center,
+      bottomBorder: thinBorder,
+    );
+    final statusStyleDue = CellStyle(
+      bold: true, fontSize: 9, fontColorHex: ExcelColor.fromHexString('#B91C1C'),
+      backgroundColorHex: ExcelColor.fromHexString('#FEE2E2'),
+      horizontalAlign: HorizontalAlign.Center, verticalAlign: VerticalAlign.Center,
+      bottomBorder: thinBorder,
+    );
+
     for (int rowIdx = 0; rowIdx < sorted.length; rowIdx++) {
       final inv = sorted[rowIdx];
       final isEven = (rowIdx % 2 == 0);
@@ -288,67 +349,23 @@ class ExcelExportService {
       totalDue += inv.balanceDue;
       totalTaxAmt += inv.totalTax;
 
-      // Base Styles for this data row
-      final textStyle = CellStyle(
-        fontSize: 10,
-        fontColorHex: ExcelColor.fromHexString('#1E293B'),
-        backgroundColorHex: ExcelColor.fromHexString(bgHex),
-        horizontalAlign: HorizontalAlign.Left,
-        verticalAlign: VerticalAlign.Center,
-        bottomBorder: thinBorder,
-      );
+      // Use pre-built styles from cache — no new allocations per row
+      final textStyle   = textStyles[bgHex]!;
+      final centerStyle = centerStyles[bgHex]!;
+      final numStyle    = numStyles[bgHex]!;
 
-      final centerStyle = CellStyle(
-        fontSize: 10,
-        fontColorHex: ExcelColor.fromHexString('#334155'),
-        backgroundColorHex: ExcelColor.fromHexString(bgHex),
-        horizontalAlign: HorizontalAlign.Center,
-        verticalAlign: VerticalAlign.Center,
-        bottomBorder: thinBorder,
-      );
+      final hasPaid = inv.amountPaid > 0;
+      final hasDue  = inv.balanceDue > 0;
+      final paidKey = '$bgHex:$hasPaid';
+      final dueKey  = '$bgHex:$hasDue';
+      final paidNumStyle = paidStyles.putIfAbsent(paidKey, () => makePaidStyle(bgHex, hasPaid));
+      final dueNumStyle  = dueStyles.putIfAbsent(dueKey,  () => makeDueStyle(bgHex, hasDue));
 
-      final numStyle = CellStyle(
-        bold: true,
-        fontSize: 10,
-        fontColorHex: ExcelColor.fromHexString('#0F172A'),
-        backgroundColorHex: ExcelColor.fromHexString(bgHex),
-        horizontalAlign: HorizontalAlign.Right,
-        verticalAlign: VerticalAlign.Center,
-        bottomBorder: thinBorder,
-      );
-
-      final paidNumStyle = CellStyle(
-        bold: true,
-        fontSize: 10,
-        fontColorHex: ExcelColor.fromHexString(inv.amountPaid > 0 ? '#15803D' : '#64748B'),
-        backgroundColorHex: ExcelColor.fromHexString(bgHex),
-        horizontalAlign: HorizontalAlign.Right,
-        verticalAlign: VerticalAlign.Center,
-        bottomBorder: thinBorder,
-      );
-
-      final dueNumStyle = CellStyle(
-        bold: true,
-        fontSize: 10,
-        fontColorHex: ExcelColor.fromHexString(inv.balanceDue > 0 ? '#B91C1C' : '#64748B'),
-        backgroundColorHex: ExcelColor.fromHexString(bgHex),
-        horizontalAlign: HorizontalAlign.Right,
-        verticalAlign: VerticalAlign.Center,
-        bottomBorder: thinBorder,
-      );
-
-      // Clean status pill style
-      final isPaid = inv.status == 'PAID';
+      // Pick status style from the 3 pre-built variants
+      final isPaid    = inv.status == 'PAID';
       final isPartial = inv.status == 'PARTIALLY_PAID' || (inv.amountPaid > 0 && inv.balanceDue > 0);
-      final statusStyle = CellStyle(
-        bold: true,
-        fontSize: 9,
-        fontColorHex: ExcelColor.fromHexString(isPaid ? '#15803D' : (isPartial ? '#B45309' : '#B91C1C')),
-        backgroundColorHex: ExcelColor.fromHexString(isPaid ? '#DCFCE7' : (isPartial ? '#FEF3C7' : '#FEE2E2')),
-        horizontalAlign: HorizontalAlign.Center,
-        verticalAlign: VerticalAlign.Center,
-        bottomBorder: thinBorder,
-      );
+      final statusStyle = isPaid ? statusStylePaid : (isPartial ? statusStylePartial : statusStyleDue);
+
 
       if (includeItemizedBreakdown && inv.items.isNotEmpty) {
         // Multi-line breakdown for this invoice

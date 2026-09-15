@@ -5,19 +5,32 @@ const Customer = require('../models/Customer');
 const { calculateInvoiceTotals } = require('../utils/gstCalculator');
 const { numberToWordsIndian } = require('../utils/numberToWords');
 
+// ── In-memory TTL cache for company filter lookups ────────────────────────────────
+// Avoids a Business.findOne() DB hit on every single invoice request.
+// TTL of 30s is safe because business ID / company scope rarely changes.
+const _companyFilterCache = new Map(); // key: userId|companyId -> { filter, expiresAt }
+const COMPANY_FILTER_TTL_MS = 30_000; // 30 seconds
+
 // Helper to format invoice number
 const formatInvoiceNumber = (prefix = 'INV', num = 1) => {
   return `${prefix}-${String(num).padStart(4, '0')}`;
 };
 
-// Helper to build isolated company filter
+// Helper to build isolated company filter (with in-memory TTL cache)
 const buildCompanyFilter = async (userId, companyId) => {
-  const primaryBusiness = await Business.findOne({ userId });
+  const cacheKey = `${userId}|${(companyId || '').trim()}`;
+  const cached = _companyFilterCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.filter;
+  }
+
+  const primaryBusiness = await Business.findOne({ userId }).lean();
   const primaryId = primaryBusiness ? primaryBusiness._id.toString() : null;
 
   const cid = (companyId || '').trim();
   const isPrimary = !cid || cid === 'comp_1' || cid === 'primary' || (primaryId && cid === primaryId);
 
+  let filter;
   if (isPrimary) {
     const orList = [
       { companyId: 'comp_1' },
@@ -28,10 +41,13 @@ const buildCompanyFilter = async (userId, companyId) => {
     if (primaryId) {
       orList.push({ companyId: primaryId });
     }
-    return { $or: orList };
+    filter = { $or: orList };
   } else {
-    return { companyId: cid };
+    filter = { companyId: cid };
   }
+
+  _companyFilterCache.set(cacheKey, { filter, expiresAt: Date.now() + COMPANY_FILTER_TTL_MS });
+  return filter;
 };
 
 // @desc    Get next invoice number preview
@@ -114,7 +130,20 @@ const getInvoices = async (req, res) => {
     }
 
     const query = andConditions.length > 1 ? { $and: andConditions } : andConditions[0];
-    const invoices = await Invoice.find(query).sort({ invoiceDate: -1, createdAt: -1 });
+
+    // .lean() returns plain JS objects (~30-40% faster serialization).
+    // Projection excludes heavy fields not needed for the list view
+    // (full item details, terms, etc. are only needed on single-invoice fetch).
+    const listProjection = {
+      userId: 0,
+      'businessSnapshot.bankDetails': 0,
+      termsAndConditions: 0,
+      __v: 0,
+    };
+
+    const invoices = await Invoice.find(query, listProjection)
+      .sort({ invoiceDate: -1, createdAt: -1 })
+      .lean();
 
     // Aggregate summary for the filtered results
     const summary = invoices.reduce(

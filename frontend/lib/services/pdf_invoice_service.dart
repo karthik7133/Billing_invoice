@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -18,6 +19,62 @@ class PdfInvoiceService {
   static final PdfColor lineGray = PdfColor.fromHex('#D9D9D9');
   static final PdfColor darkText = PdfColor.fromHex('#1A1A1A');
   static final PdfColor lightPurple = PdfColor.fromHex('#F0EFFF');
+
+  // ─── Font Cache ─────────────────────────────────────────────────────────────
+  // Fonts are downloaded from Google CDN on first use and reused on every
+  // subsequent call — eliminates the 3-6s lag on repeated PDF generation.
+  static pw.Font? _cachedFontRegular;
+  static pw.Font? _cachedFontBold;
+  static pw.Font? _cachedFontItalic;
+  static bool _fontsLoading = false;
+  static final List<Completer<void>> _fontWaiters = [];
+
+  static Future<(pw.Font, pw.Font, pw.Font)> _loadFonts() async {
+    // If already cached, return immediately
+    if (_cachedFontRegular != null && _cachedFontBold != null && _cachedFontItalic != null) {
+      return (_cachedFontRegular!, _cachedFontBold!, _cachedFontItalic!);
+    }
+    // If another call is already loading, wait for it
+    if (_fontsLoading) {
+      final completer = Completer<void>();
+      _fontWaiters.add(completer);
+      await completer.future;
+      return (_cachedFontRegular!, _cachedFontBold!, _cachedFontItalic!);
+    }
+    // This call wins the race — load all 3 fonts in parallel
+    _fontsLoading = true;
+    try {
+      final results = await Future.wait([
+        PdfGoogleFonts.notoSansRegular(),
+        PdfGoogleFonts.notoSansBold(),
+        PdfGoogleFonts.notoSansItalic(),
+      ]);
+      _cachedFontRegular = results[0];
+      _cachedFontBold    = results[1];
+      _cachedFontItalic  = results[2];
+    } finally {
+      _fontsLoading = false;
+      // Wake up any callers that were waiting
+      for (final w in _fontWaiters) {
+        if (!w.isCompleted) w.complete();
+      }
+      _fontWaiters.clear();
+    }
+    return (_cachedFontRegular!, _cachedFontBold!, _cachedFontItalic!);
+  }
+
+  // ─── Logo Image Cache ────────────────────────────────────────────────────────
+  // Caches resolved logo images by their URL/key so repeated opens of the
+  // same invoice don't re-download or re-decode the logo bytes.
+  static final Map<String, pw.ImageProvider?> _logoCache = {};
+
+  static Future<pw.ImageProvider?> _getCachedLogo(String? logoUrl) async {
+    final key = (logoUrl ?? '').trim();
+    if (_logoCache.containsKey(key)) return _logoCache[key];
+    final image = await _resolveLogoImage(logoUrl);
+    _logoCache[key] = image;
+    return image;
+  }
 
   /// Resolves the company logo image from network, base64 data URI, local file, or asset bundle fallback.
   static Future<pw.ImageProvider?> _resolveLogoImage(String? logoUrl) async {
@@ -62,16 +119,15 @@ class PdfInvoiceService {
   static Future<Uint8List> generateTaxInvoicePdf(InvoiceModel invoice) async {
     final pdf = pw.Document();
 
-    // High quality font with full unicode and ₹ glyph support
-    final fontRegular = await PdfGoogleFonts.notoSansRegular();
-    final fontBold = await PdfGoogleFonts.notoSansBold();
-    final fontItalic = await PdfGoogleFonts.notoSansItalic();
-
     final business = invoice.businessSnapshot;
     final customer = invoice.customerSnapshot;
 
-    // Use company logo from businessSnapshot if available, else fall back to crab_logo.png
-    final logoImage = await _resolveLogoImage(business.logo);
+    // Load fonts and logo in parallel — fonts are cached after first load
+    final fontsFuture = _loadFonts();
+    final logoFuture = _getCachedLogo(business.logo);
+    final results = await Future.wait([fontsFuture, logoFuture]);
+    final (fontRegular, fontBold, fontItalic) = results[0] as (pw.Font, pw.Font, pw.Font);
+    final logoImage = results[1] as pw.ImageProvider?;
 
     // Quantity calculations
     final totalQty = invoice.items.fold<double>(0, (sum, it) => sum + it.quantity);
@@ -570,17 +626,18 @@ class PdfInvoiceService {
     bool showPaymentInfo = true,
   }) async {
     final pdf = pw.Document();
-    final fontRegular = await PdfGoogleFonts.notoSansRegular();
-    final fontBold = await PdfGoogleFonts.notoSansBold();
-    final fontItalic = await PdfGoogleFonts.notoSansItalic();
 
     final b = business ??
         (invoices.isNotEmpty
             ? invoices.first.businessSnapshot
             : BusinessModel(id: '', businessName: 'JMJ SEA FOODS', phone: '9010966188', email: 'donijoel12345@gmail.com'));
 
-    // Logo
-    final logoImage = await _resolveLogoImage(b.logo);
+    // Load fonts and logo in parallel — fonts are cached after first load
+    final fontsFuture = _loadFonts();
+    final logoFuture = _getCachedLogo(b.logo);
+    final fontResults = await Future.wait([fontsFuture, logoFuture]);
+    final (fontRegular, fontBold, fontItalic) = fontResults[0] as (pw.Font, pw.Font, pw.Font);
+    final logoImage = fontResults[1] as pw.ImageProvider?;
 
     final dfmt = DateFormat('dd/MM/yyyy');
 
@@ -1007,16 +1064,19 @@ class PdfInvoiceService {
     String reportTitle = 'GENERAL LEDGER & DAYBOOK',
   }) async {
     final pdf = pw.Document();
-    final fontRegular = await PdfGoogleFonts.notoSansRegular();
-    final fontBold = await PdfGoogleFonts.notoSansBold();
-    final fontItalic = await PdfGoogleFonts.notoSansItalic();
 
     final b = business ??
         (invoices.isNotEmpty
             ? invoices.first.businessSnapshot
             : BusinessModel(id: '', businessName: 'JMJ SEA FOODS', phone: '9010966188', email: 'donijoel12345@gmail.com'));
 
-    final logoImage = await _resolveLogoImage(b.logo);
+    // Load fonts and logo in parallel — fonts are cached after first load
+    final fontsFuture = _loadFonts();
+    final logoFuture = _getCachedLogo(b.logo);
+    final fontResults = await Future.wait([fontsFuture, logoFuture]);
+    final (fontRegular, fontBold, fontItalic) = fontResults[0] as (pw.Font, pw.Font, pw.Font);
+    final logoImage = fontResults[1] as pw.ImageProvider?;
+
     final dfmt = DateFormat('dd/MM/yyyy');
 
     final fromDay = DateTime(fromDate.year, fromDate.month, fromDate.day);

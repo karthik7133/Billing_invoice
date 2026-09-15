@@ -217,12 +217,12 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
           IconButton(
             icon: const Icon(Icons.share_outlined, color: AppColors.primary),
             tooltip: 'Share PDF',
-            onPressed: () => ShareService.shareInvoicePdf(_invoice),
+            onPressed: () => ShareService.shareInvoicePdf(_invoice, context: context),
           ),
           IconButton(
             icon: const Icon(Icons.print_outlined, color: AppColors.primary),
             tooltip: 'Print Invoice',
-            onPressed: () => ShareService.printInvoice(_invoice),
+            onPressed: () => ShareService.printInvoice(_invoice, context: context),
           ),
           PopupMenuButton<String>(
             onSelected: (val) {

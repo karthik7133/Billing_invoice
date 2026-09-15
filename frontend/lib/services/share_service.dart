@@ -1,28 +1,50 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:open_filex/open_filex.dart';
 import '../models/invoice_model.dart';
+import '../widgets/pdf_progress_dialog.dart';
 import 'pdf_invoice_service.dart';
 
 class ShareService {
-  static Future<void> printInvoice(InvoiceModel invoice) async {
-    final pdfBytes = await PdfInvoiceService.generateTaxInvoicePdf(invoice);
-    await Printing.layoutPdf(
-      onLayout: (PdfPageFormat format) async => pdfBytes,
-      name: 'Invoice_${invoice.invoiceNumber}.pdf',
-    );
+  /// Print invoice with a loading dialog so the UI doesn't freeze silently.
+  static Future<void> printInvoice(InvoiceModel invoice, {BuildContext? context}) async {
+    if (context != null && context.mounted) {
+      PdfProgressDialog.show(context, message: 'Preparing Invoice for Print...');
+    }
+    try {
+      final pdfBytes = await PdfInvoiceService.generateTaxInvoicePdf(invoice);
+      if (context != null) PdfProgressDialog.hide();
+      await Printing.layoutPdf(
+        onLayout: (PdfPageFormat format) async => pdfBytes,
+        name: 'Invoice_${invoice.invoiceNumber}.pdf',
+      );
+    } catch (e) {
+      if (context != null) PdfProgressDialog.hide();
+      rethrow;
+    }
   }
 
-  static Future<void> shareInvoicePdf(InvoiceModel invoice) async {
-    final pdfBytes = await PdfInvoiceService.generateTaxInvoicePdf(invoice);
-    await Printing.sharePdf(
-      bytes: pdfBytes,
-      filename: 'Invoice_${invoice.invoiceNumber}.pdf',
-    );
+  /// Share invoice PDF with a loading dialog so the UI doesn't freeze silently.
+  static Future<void> shareInvoicePdf(InvoiceModel invoice, {BuildContext? context}) async {
+    if (context != null && context.mounted) {
+      PdfProgressDialog.show(context, message: 'Generating Invoice PDF...');
+    }
+    try {
+      final pdfBytes = await PdfInvoiceService.generateTaxInvoicePdf(invoice);
+      if (context != null) PdfProgressDialog.hide();
+      await Printing.sharePdf(
+        bytes: pdfBytes,
+        filename: 'Invoice_${invoice.invoiceNumber}.pdf',
+      );
+    } catch (e) {
+      if (context != null) PdfProgressDialog.hide();
+      rethrow;
+    }
   }
 
   static Future<void> sharePdf(Uint8List bytes, {required String filename}) async {

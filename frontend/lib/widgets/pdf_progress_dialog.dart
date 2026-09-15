@@ -1,6 +1,51 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 
+/// Stateful dots-animation widget shown inside the progress dialog
+class _PulsingDots extends StatefulWidget {
+  const _PulsingDots();
+  @override
+  State<_PulsingDots> createState() => _PulsingDotsState();
+}
+
+class _PulsingDotsState extends State<_PulsingDots>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  int _dotCount = 1;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
+    _timer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      if (mounted) setState(() => _dotCount = (_dotCount % 3) + 1);
+    });
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dots = '●' * _dotCount;
+    return Text(
+      dots,
+      style: const TextStyle(
+        fontSize: 18,
+        color: Color(0xFF2563EB),
+        fontWeight: FontWeight.w900,
+        letterSpacing: 4,
+        decoration: TextDecoration.none,
+      ),
+    );
+  }
+}
+
 class PdfProgressDialog {
   static BuildContext? _dialogContext;
   static bool _isShowing = false;
@@ -18,7 +63,8 @@ class PdfProgressDialog {
     _isDismissed = false;
 
     _autoDismissTimer?.cancel();
-    _autoDismissTimer = Timer(const Duration(seconds: 6), () {
+    // Extended to 30s — large ledger PDFs can take that long
+    _autoDismissTimer = Timer(const Duration(seconds: 30), () {
       hide();
     });
 
@@ -72,19 +118,19 @@ class PdfProgressDialog {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
-                    width: 48,
-                    height: 48,
-                    padding: const EdgeInsets.all(8),
+                    width: 52,
+                    height: 52,
+                    padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
                       color: const Color(0xFFEFF6FF),
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(16),
                     ),
                     child: const CircularProgressIndicator(
                       strokeWidth: 3.2,
                       valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF2563EB)),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
                   Text(
                     message,
                     textAlign: TextAlign.center,
@@ -95,14 +141,16 @@ class PdfProgressDialog {
                       decoration: TextDecoration.none,
                     ),
                   ),
+                  const SizedBox(height: 6),
+                  const _PulsingDots(),
                   const SizedBox(height: 4),
                   const Text(
                     'Please wait a moment',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: FontWeight.w500,
-                      color: Color(0xFF64748B),
+                      color: Color(0xFF94A3B8),
                       decoration: TextDecoration.none,
                     ),
                   ),
