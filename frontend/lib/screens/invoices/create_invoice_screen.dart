@@ -88,6 +88,8 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
   bool _isReceivedChecked = false;
   bool _termsExpanded = false;
   String _termsAndConditions = '';
+  bool _isSaving = false;
+  String _savingStatusMessage = 'Saving Sale...';
 
   // Multiple payments list
   final List<PaymentRecord> _payments = [];
@@ -985,6 +987,8 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
   }
 
   void _saveSale() async {
+    if (_isSaving) return;
+
     final name = _customerNameController.text.trim();
     if (name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1000,145 +1004,166 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
       return;
     }
 
-    final custProvider = Provider.of<CustomerProvider>(context, listen: false);
-    final invProvider = Provider.of<InvoiceProvider>(context, listen: false);
-    final busProvider = Provider.of<BusinessProvider>(context, listen: false);
-
-    CustomerModel customer;
-    if (_selectedCustomer != null && _selectedCustomer!.name.toLowerCase() == name.toLowerCase()) {
-      customer = _selectedCustomer!;
-    } else {
-      // Find or create customer dynamically
-      final existing = custProvider.findByName(name);
-      if (existing != null) {
-        customer = existing;
-      } else {
-        final newCust = CustomerModel(
-          id: '',
-          name: name,
-          billingName: _billingNameController.text.trim(),
-          phone: _phoneController.text.trim(),
-          state: busProvider.business.state.isNotEmpty ? busProvider.business.state : 'Andhra Pradesh',
-        );
-        customer = (await custProvider.addCustomer(newCust)) ?? newCust;
-      }
-    }
-
-    // ── Duplicate invoice number check per customer ───────────────────────
-    final finalInvoiceNo = _buildFinalInvoiceNo();
-    final isEditing = widget.existingInvoice != null;
-    final duplicate = invProvider.allInvoices.any((inv) {
-      final sameNum = inv.invoiceNumber.trim().toLowerCase() == finalInvoiceNo.trim().toLowerCase();
-      final sameCust = inv.customerId == customer.id ||
-          inv.customerSnapshot.name.toLowerCase() == customer.name.toLowerCase();
-      // When editing, exclude the current invoice from the check
-      final isSelf = isEditing && inv.invoiceNumber == widget.existingInvoice!.invoiceNumber;
-      return sameNum && sameCust && !isSelf;
+    setState(() {
+      _isSaving = true;
+      _savingStatusMessage = 'Verifying sale details...';
     });
 
-    if (duplicate) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Invoice #$finalInvoiceNo already exists for ${customer.name}. Please use a different number.',
-            ),
-            backgroundColor: AppColors.error,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
-      return;
-    }
-    // ─────────────────────────────────────────────────────────────────────
+    try {
+      final custProvider = Provider.of<CustomerProvider>(context, listen: false);
+      final invProvider = Provider.of<InvoiceProvider>(context, listen: false);
+      final busProvider = Provider.of<BusinessProvider>(context, listen: false);
+      final prodProvider = Provider.of<ProductProvider>(context, listen: false);
 
-    final rawItems = _items.map((it) => it.toMap()).toList();
-    final totalRec = _payments.fold<double>(0.0, (s, p) => s + p.amount);
-    final receivedInput = double.tryParse(_receivedAmountController.text.trim()) ?? 0.0;
-    final amountPaid = _payments.isNotEmpty ? totalRec : (_isReceivedChecked ? receivedInput : 0.0);
-    final finalPayments = _payments.isNotEmpty
-        ? _payments
-        : (amountPaid > 0
-            ? [PaymentRecord(amount: amountPaid, type: _paymentType, date: _invoiceDate)]
-            : <PaymentRecord>[]);
-
-    // Upload attached images to Cloudinary
-    final uploadedUrls = <String>[];
-    if (_attachedImages.isNotEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Row(
-              children: [
-                SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
-                SizedBox(width: 12),
-                Text('Uploading attached photos to Cloudinary...'),
-              ],
-            ),
-            duration: Duration(seconds: 3),
-          ),
-        );
-      }
-      for (final img in _attachedImages) {
-        final url = await invProvider.uploadAttachment(img);
-        if (url != null && url.isNotEmpty) {
-          uploadedUrls.add(url);
+      CustomerModel customer;
+      if (_selectedCustomer != null && _selectedCustomer!.name.toLowerCase() == name.toLowerCase()) {
+        customer = _selectedCustomer!;
+      } else {
+        // Find or create customer dynamically
+        final existing = custProvider.findByName(name);
+        if (existing != null) {
+          customer = existing;
+        } else {
+          setState(() => _savingStatusMessage = 'Adding new customer...');
+          final newCust = CustomerModel(
+            id: '',
+            name: name,
+            billingName: _billingNameController.text.trim(),
+            phone: _phoneController.text.trim(),
+            state: busProvider.business.state.isNotEmpty ? busProvider.business.state : 'Andhra Pradesh',
+          );
+          customer = (await custProvider.addCustomer(newCust)) ?? newCust;
         }
       }
-    }
 
-    InvoiceModel invoice;
-    try {
-      invoice = await invProvider.createInvoice(
-        customer: customer,
-        business: busProvider.business,
-        rawItems: rawItems,
-        invoiceNumber: finalInvoiceNo,
-        invoiceDate: _invoiceDate,
-        origin: _selectedOrigin == '-' ? '' : _selectedOrigin,
-        attachments: uploadedUrls,
-        amountPaid: amountPaid,
-        payments: finalPayments,
-        paymentType: finalPayments.isNotEmpty ? finalPayments.first.type : _paymentType,
-        description: _descriptionController.text.trim(),
-        termsAndConditions: _termsAndConditions,
-      );
-    } catch (e) {
-      // Handle duplicate invoice number error (409 from backend)
+      // ── Duplicate invoice number check per customer ───────────────────────
+      final finalInvoiceNo = _buildFinalInvoiceNo();
+      final isEditing = widget.existingInvoice != null;
+      final duplicate = invProvider.allInvoices.any((inv) {
+        final sameNum = inv.invoiceNumber.trim().toLowerCase() == finalInvoiceNo.trim().toLowerCase();
+        final sameCust = inv.customerId == customer.id ||
+            inv.customerSnapshot.name.toLowerCase() == customer.name.toLowerCase();
+        // When editing, exclude the current invoice from the check
+        final isSelf = isEditing && inv.invoiceNumber == widget.existingInvoice!.invoiceNumber;
+        return sameNum && sameCust && !isSelf;
+      });
+
+      if (duplicate) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Invoice #$finalInvoiceNo already exists for ${customer.name}. Please use a different number.',
+              ),
+              backgroundColor: AppColors.error,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+        return;
+      }
+      // ─────────────────────────────────────────────────────────────────────
+
+      final rawItems = _items.map((it) => it.toMap()).toList();
+      final totalRec = _payments.fold<double>(0.0, (s, p) => s + p.amount);
+      final receivedInput = double.tryParse(_receivedAmountController.text.trim()) ?? 0.0;
+      final amountPaid = _payments.isNotEmpty ? totalRec : (_isReceivedChecked ? receivedInput : 0.0);
+      final finalPayments = _payments.isNotEmpty
+          ? _payments
+          : (amountPaid > 0
+              ? [PaymentRecord(amount: amountPaid, type: _paymentType, date: _invoiceDate)]
+              : <PaymentRecord>[]);
+
+      // Upload attached images to Cloudinary
+      final uploadedUrls = <String>[];
+      if (_attachedImages.isNotEmpty) {
+        setState(() => _savingStatusMessage = 'Uploading attached photos...');
+        for (final img in _attachedImages) {
+          final url = await invProvider.uploadAttachment(img);
+          if (url != null && url.isNotEmpty) {
+            uploadedUrls.add(url);
+          }
+        }
+      }
+
+      setState(() => _savingStatusMessage = isEditing ? 'Updating invoice...' : 'Saving invoice...');
+      InvoiceModel invoice;
+      try {
+        if (isEditing) {
+          invoice = await invProvider.updateInvoice(
+            invoiceId: widget.existingInvoice!.id,
+            customer: customer,
+            business: busProvider.business,
+            rawItems: rawItems,
+            invoiceNumber: finalInvoiceNo,
+            invoiceDate: _invoiceDate,
+            origin: _selectedOrigin == '-' ? '' : _selectedOrigin,
+            attachments: uploadedUrls.isNotEmpty ? uploadedUrls : widget.existingInvoice!.attachments,
+            amountPaid: amountPaid,
+            payments: finalPayments,
+            paymentType: finalPayments.isNotEmpty ? finalPayments.first.type : _paymentType,
+            description: _descriptionController.text.trim(),
+            termsAndConditions: _termsAndConditions,
+          );
+        } else {
+          invoice = await invProvider.createInvoice(
+            customer: customer,
+            business: busProvider.business,
+            rawItems: rawItems,
+            invoiceNumber: finalInvoiceNo,
+            invoiceDate: _invoiceDate,
+            origin: _selectedOrigin == '-' ? '' : _selectedOrigin,
+            attachments: uploadedUrls,
+            amountPaid: amountPaid,
+            payments: finalPayments,
+            paymentType: finalPayments.isNotEmpty ? finalPayments.first.type : _paymentType,
+            description: _descriptionController.text.trim(),
+            termsAndConditions: _termsAndConditions,
+          );
+        }
+      } catch (e) {
+        // Handle duplicate invoice number error (409 from backend)
+        if (mounted) {
+          final msg = e.toString().replaceFirst('Exception: ', '');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(msg),
+              backgroundColor: AppColors.error,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+        return;
+      }
+
+      setState(() => _savingStatusMessage = 'Updating records...');
+      // Refresh customers and sync items concurrently to reduce perceived latency
+      try {
+        await Future.wait([
+          custProvider.fetchCustomers(),
+          prodProvider.syncItemsFromInvoices([invoice]),
+        ]);
+      } catch (_) {}
+
       if (mounted) {
-        final msg = e.toString().replaceFirst('Exception: ', '');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(msg),
-            backgroundColor: AppColors.error,
-            duration: const Duration(seconds: 4),
+            content: Text(isEditing
+                ? 'Sale #${invoice.invoiceNumber} updated successfully'
+                : 'Sale #${invoice.invoiceNumber} saved successfully'),
+            backgroundColor: AppColors.receivableGreen,
           ),
         );
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (ctx) => InvoiceDetailScreen(invoice: invoice)),
+        );
       }
-      return;
-    }
-
-    // Refresh customers so balance is updated dynamically
-    await custProvider.fetchCustomers();
-
-    // Ensure all items in this sale are immediately synced to Product Catalog
-    if (mounted) {
-      try {
-        final prodProvider = Provider.of<ProductProvider>(context, listen: false);
-        await prodProvider.syncItemsFromInvoices([invoice]);
-      } catch (_) {}
-    }
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Sale #${invoice.invoiceNumber} saved successfully'),
-          backgroundColor: AppColors.receivableGreen,
-        ),
-      );
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (ctx) => InvoiceDetailScreen(invoice: invoice)),
-      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
     }
   }
 
@@ -1166,9 +1191,9 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
           icon: const Icon(Icons.arrow_back, color: Color(0xFF1E293B)),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
-          'Sale',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
+        title: Text(
+          widget.existingInvoice != null ? 'Edit Sale #${widget.existingInvoice!.invoiceNumber}' : 'Sale',
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
         ),
         actions: [
           if (_items.isNotEmpty || _customerNameController.text.isNotEmpty)
@@ -1190,9 +1215,11 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: DesktopContainer(
-        maxWidth: 1050,
-        child: SingleChildScrollView(
+      body: Stack(
+        children: [
+          DesktopContainer(
+            maxWidth: 1050,
+            child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2043,12 +2070,15 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
         ),
       ),
       ),
+      if (_isSaving) _buildSavingOverlay(),
+    ],
+  ),
 
       // 8. Bottom Bar: DesktopActionBar (Adapts between mobile full-width and desktop right-aligned)
       bottomNavigationBar: DesktopActionBar(
         maxDesktopWidth: 1050,
         secondaryButton: OutlinedButton(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
           style: OutlinedButton.styleFrom(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
             side: const BorderSide(color: Color(0xFFCBD5E1)),
@@ -2060,7 +2090,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
           ),
         ),
         primaryButton: ElevatedButton(
-          onPressed: _saveSale,
+          onPressed: _isSaving ? null : _saveSale,
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF1E88E5), // Vibrant blue Save button
             foregroundColor: Colors.white,
@@ -2068,9 +2098,73 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             elevation: 2,
           ),
-          child: const Text(
-            'Save Sale',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+          child: _isSaving
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      widget.existingInvoice != null ? 'Updating Sale...' : 'Saving Sale...',
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white),
+                    ),
+                  ],
+                )
+              : Text(
+                  widget.existingInvoice != null ? 'Update Sale' : 'Save Sale',
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSavingOverlay() {
+    return Container(
+      color: Colors.black.withValues(alpha: 0.35),
+      child: Center(
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 32),
+          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.15),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(
+                width: 44,
+                height: 44,
+                child: CircularProgressIndicator(
+                  strokeWidth: 3.5,
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1E88E5)),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                _savingStatusMessage,
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Please wait while we record the transaction',
+                style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
+                textAlign: TextAlign.center,
+              ),
+            ],
           ),
         ),
       ),

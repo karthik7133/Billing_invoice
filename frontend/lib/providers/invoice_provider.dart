@@ -58,6 +58,13 @@ class InvoiceProvider with ChangeNotifier {
     _isInitialized = true;
   }
 
+  @visibleForTesting
+  void setInvoicesForTesting(List<InvoiceModel> list) {
+    _invoices = List.from(list);
+    _isInitialized = true;
+    notifyListeners();
+  }
+
   List<InvoiceModel> get invoices {
     return _invoices.where((inv) {
       if (inv.isDeleted) return false;
@@ -357,6 +364,215 @@ class InvoiceProvider with ChangeNotifier {
     return finalInvoice;
   }
 
+  /// Update an existing invoice (items, payments, amounts, description, etc.)
+  Future<InvoiceModel> updateInvoice({
+    required String invoiceId,
+    required CustomerModel customer,
+    required BusinessModel business,
+    required List<Map<String, dynamic>> rawItems,
+    String? invoiceNumber,
+    DateTime? invoiceDate,
+    DateTime? dueDate,
+    String origin = 'AP',
+    List<String> attachments = const [],
+    double invoiceDiscount = 0,
+    String invoiceDiscountType = 'FIXED',
+    double otherCharges = 0,
+    String status = 'ISSUED',
+    double amountPaid = 0,
+    List<PaymentRecord> payments = const [],
+    String paymentType = 'Cash',
+    String description = '',
+    String notes = '',
+    String termsAndConditions = '',
+  }) async {
+    _isLoading = true;
+    notifyListeners();
+
+    final date = invoiceDate ?? DateTime.now();
+    final due = dueDate ?? date.add(const Duration(days: 15));
+
+    final calculated = GstCalculator.calculateInvoiceTotals(
+      items: rawItems,
+      sellerState: business.state,
+      buyerState: customer.state,
+      invoiceDiscount: invoiceDiscount,
+      invoiceDiscountType: invoiceDiscountType,
+      otherCharges: otherCharges,
+    );
+
+    final finalInvNum = (invoiceNumber != null && invoiceNumber.trim().isNotEmpty)
+        ? invoiceNumber.trim()
+        : '${business.invoicePrefix}-${business.nextInvoiceNumber.toString().padLeft(4, '0')}';
+
+    final paid = payments.isNotEmpty
+        ? payments.fold<double>(0.0, (sum, p) => sum + p.amount)
+        : amountPaid;
+    final balance = (calculated.grandTotal - paid).clamp(0.0, calculated.grandTotal);
+    final excess = paid > calculated.grandTotal ? paid - calculated.grandTotal : 0.0;
+
+    String finalStatus = status;
+    if (paid >= calculated.grandTotal && calculated.grandTotal > 0) {
+      finalStatus = 'PAID';
+    } else if (paid > 0 && paid < calculated.grandTotal) {
+      finalStatus = 'PARTIALLY_PAID';
+    } else {
+      finalStatus = 'ISSUED';
+    }
+
+    final words = NumberToWords.convertToIndianWords(calculated.grandTotal);
+
+    final parsedItems = <InvoiceItemModel>[];
+    for (int i = 0; i < calculated.items.length; i++) {
+      final it = calculated.items[i];
+      final raw = rawItems[i];
+      parsedItems.add(
+        InvoiceItemModel(
+          productId: raw['productId']?.toString(),
+          name: raw['name']?.toString() ?? 'Item ${i + 1}',
+          description: raw['description']?.toString() ?? '',
+          hsnSac: raw['hsnSac']?.toString() ?? '',
+          unit: raw['unit']?.toString() ?? 'PCS',
+          quantity: it.quantity,
+          rate: it.rate,
+          grossAmount: it.grossAmount,
+          discount: it.discount,
+          discountType: it.discountType,
+          discountAmount: it.discountAmount,
+          taxableAmount: it.taxableAmount,
+          gstRate: it.gstRate,
+          cgstRate: it.cgstRate,
+          sgstRate: it.sgstRate,
+          igstRate: it.igstRate,
+          cgst: it.cgst,
+          sgst: it.sgst,
+          igst: it.igst,
+          totalTax: it.totalTax,
+          total: it.total,
+        ),
+      );
+    }
+
+    // Find existing invoice index
+    final index = _invoices.indexWhere((inv) => inv.id == invoiceId || inv.invoiceNumber == finalInvNum);
+    InvoiceModel finalInvoice;
+    if (index != -1) {
+      final old = _invoices[index];
+      finalInvoice = old.copyWith(
+        invoiceNumber: finalInvNum,
+        customerId: customer.id,
+        customerSnapshot: customer,
+        businessSnapshot: business,
+        invoiceDate: date,
+        dueDate: due,
+        origin: origin,
+        attachments: attachments,
+        items: parsedItems,
+        payments: payments,
+        isInterState: calculated.isInterState,
+        subtotal: calculated.subtotal,
+        itemsDiscount: calculated.itemsDiscount,
+        extraDiscount: calculated.extraDiscount,
+        totalDiscount: calculated.totalDiscount,
+        taxableAmount: calculated.taxableAmount,
+        cgst: calculated.cgst,
+        sgst: calculated.sgst,
+        igst: calculated.igst,
+        totalTax: calculated.totalTax,
+        otherCharges: calculated.otherCharges,
+        roundOff: calculated.roundOff,
+        grandTotal: calculated.grandTotal,
+        amountPaid: paid,
+        balanceDue: balance,
+        excessAmount: excess,
+        paymentType: paymentType,
+        description: description.isNotEmpty ? description : notes,
+        status: finalStatus,
+        notes: notes.isNotEmpty ? notes : (description.isNotEmpty ? description : 'Thank you for your business!'),
+        termsAndConditions: termsAndConditions.isNotEmpty ? termsAndConditions : business.termsAndConditions,
+        amountInWords: words,
+      );
+      _invoices[index] = finalInvoice;
+    } else {
+      finalInvoice = InvoiceModel(
+        id: invoiceId,
+        invoiceNumber: finalInvNum,
+        customerId: customer.id,
+        customerSnapshot: customer,
+        businessSnapshot: business,
+        invoiceDate: date,
+        dueDate: due,
+        origin: origin,
+        attachments: attachments,
+        items: parsedItems,
+        payments: payments,
+        isInterState: calculated.isInterState,
+        subtotal: calculated.subtotal,
+        itemsDiscount: calculated.itemsDiscount,
+        extraDiscount: calculated.extraDiscount,
+        totalDiscount: calculated.totalDiscount,
+        taxableAmount: calculated.taxableAmount,
+        cgst: calculated.cgst,
+        sgst: calculated.sgst,
+        igst: calculated.igst,
+        totalTax: calculated.totalTax,
+        otherCharges: calculated.otherCharges,
+        roundOff: calculated.roundOff,
+        grandTotal: calculated.grandTotal,
+        amountPaid: paid,
+        balanceDue: balance,
+        excessAmount: excess,
+        paymentType: paymentType,
+        description: description.isNotEmpty ? description : notes,
+        status: finalStatus,
+        notes: notes.isNotEmpty ? notes : (description.isNotEmpty ? description : 'Thank you for your business!'),
+        termsAndConditions: termsAndConditions.isNotEmpty ? termsAndConditions : business.termsAndConditions,
+        amountInWords: words,
+      );
+      _invoices.insert(0, finalInvoice);
+    }
+
+    try {
+      final res = await _api.put('${Endpoints.invoices}/$invoiceId', {
+        'customerId': customer.id,
+        'customerName': customer.name,
+        'invoiceNumber': finalInvNum,
+        'invoiceDate': date.toIso8601String(),
+        'dueDate': due.toIso8601String(),
+        'origin': origin,
+        'attachments': attachments,
+        'items': rawItems,
+        'payments': payments.map((p) => p.toJson()).toList(),
+        'invoiceDiscount': invoiceDiscount,
+        'invoiceDiscountType': invoiceDiscountType,
+        'otherCharges': otherCharges,
+        'status': finalStatus,
+        'amountPaid': paid,
+        'paymentType': paymentType,
+        'description': description,
+        'notes': notes,
+        'termsAndConditions': termsAndConditions,
+        if (_activeCompanyId.isNotEmpty) 'companyId': _activeCompanyId,
+      });
+
+      if (res.success && res.data != null && res.data['invoice'] != null) {
+        final fromBackend = InvoiceModel.fromJson(res.data['invoice'] as Map<String, dynamic>);
+        final idx = _invoices.indexWhere((inv) => inv.id == invoiceId || inv.id == fromBackend.id);
+        if (idx != -1) {
+          _invoices[idx] = fromBackend;
+          finalInvoice = fromBackend;
+        }
+      }
+    } catch (e) {
+      debugPrint('[InvoiceProvider] updateInvoice error: $e');
+    }
+
+    await _cache.saveInvoices(_invoices, companyId: _activeCompanyId);
+    _isLoading = false;
+    notifyListeners();
+    return finalInvoice;
+  }
+
   /// Upload photo/attachment to Cloudinary via backend /api/upload
   Future<String?> uploadAttachment(dynamic file, {String? filename}) async {
     try {
@@ -463,6 +679,31 @@ class InvoiceProvider with ChangeNotifier {
 
     final old = _invoices[index];
     final updatedPayments = List<PaymentRecord>.from(old.payments)..add(payment);
+    return updatePaymentsForInvoice(invoiceId, updatedPayments);
+  }
+
+  /// Delete an individual payment installment from an invoice
+  Future<bool> deletePaymentFromInvoice(String invoiceId, int paymentIndex) async {
+    final index = _invoices.indexWhere((inv) => inv.id == invoiceId);
+    if (index == -1) return false;
+
+    final old = _invoices[index];
+    if (paymentIndex < 0 || paymentIndex >= old.payments.length) return false;
+
+    final updatedPayments = List<PaymentRecord>.from(old.payments)..removeAt(paymentIndex);
+    return updatePaymentsForInvoice(invoiceId, updatedPayments);
+  }
+
+  /// Edit an individual payment installment in an invoice
+  Future<bool> editPaymentInInvoice(String invoiceId, int paymentIndex, PaymentRecord newPayment) async {
+    final index = _invoices.indexWhere((inv) => inv.id == invoiceId);
+    if (index == -1) return false;
+
+    final old = _invoices[index];
+    if (paymentIndex < 0 || paymentIndex >= old.payments.length) return false;
+
+    final updatedPayments = List<PaymentRecord>.from(old.payments);
+    updatedPayments[paymentIndex] = newPayment;
     return updatePaymentsForInvoice(invoiceId, updatedPayments);
   }
 
@@ -576,20 +817,39 @@ class InvoiceProvider with ChangeNotifier {
   }
 
   /// Restore soft-deleted invoice from recycle bin
-  Future<bool> restoreInvoice(String invoiceId) async {
+  Future<bool> restoreInvoice(String invoiceId, {InvoiceModel? restoredInvoice}) async {
     final index = _invoices.indexWhere((inv) => inv.id == invoiceId);
     if (index != -1) {
       _invoices[index] = _invoices[index].copyWith(
         isDeleted: false,
         deletedAt: null,
       );
-      await _cache.saveInvoices(_invoices, companyId: _activeCompanyId);
-      notifyListeners();
+    } else if (restoredInvoice != null) {
+      _invoices.insert(0, restoredInvoice.copyWith(
+        isDeleted: false,
+        deletedAt: null,
+      ));
     }
+    notifyListeners();
+    await _cache.saveInvoices(_invoices, companyId: _activeCompanyId);
 
     try {
       final res = await _api.post('${Endpoints.invoices}/$invoiceId/restore', {});
-      return res.success;
+      if (res.success) {
+        if (res.data != null && res.data['invoice'] != null) {
+          final serverInv = InvoiceModel.fromJson(res.data['invoice'] as Map<String, dynamic>);
+          final idx = _invoices.indexWhere((inv) => inv.id == invoiceId);
+          if (idx != -1) {
+            _invoices[idx] = serverInv;
+          } else {
+            _invoices.insert(0, serverInv);
+          }
+          await _cache.saveInvoices(_invoices, companyId: _activeCompanyId);
+          notifyListeners();
+        }
+        return true;
+      }
+      return false;
     } catch (e) {
       debugPrint('[InvoiceProvider] restoreInvoice error: $e');
       return false;

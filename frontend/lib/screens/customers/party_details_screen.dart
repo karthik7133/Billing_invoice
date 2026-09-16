@@ -36,11 +36,29 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
   final TextEditingController _searchController = TextEditingController();
   late CustomerModel _customer;
   String _searchQuery = '';
+  bool _isRefreshing = false;
 
   @override
   void initState() {
     super.initState();
     _customer = widget.customer;
+  }
+
+  Future<void> _refreshPartyData() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
+    try {
+      await Future.wait([
+        Provider.of<InvoiceProvider>(context, listen: false).fetchInvoices(),
+        Provider.of<CustomerProvider>(context, listen: false).fetchCustomers(),
+      ]);
+    } catch (e) {
+      debugPrint('[PartyDetailsScreen] refresh error: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshing = false);
+      }
+    }
   }
 
   @override
@@ -89,6 +107,21 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.black87),
         ),
         actions: [
+          // ─── Dedicated Refresh Button ──────────────────────────────
+          IconButton(
+            icon: _isRefreshing
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Color(0xFF2563EB),
+                    ),
+                  )
+                : const Icon(Icons.refresh_rounded, color: Colors.black87),
+            tooltip: 'Refresh Party Data',
+            onPressed: _isRefreshing ? null : _refreshPartyData,
+          ),
           IconButton(
             icon: const Icon(Icons.edit_outlined, color: Colors.black87),
             tooltip: 'Edit Party',
@@ -101,31 +134,36 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
               if (updated != null) {
                 setState(() => _customer = updated);
               }
+              if (mounted) {
+                _refreshPartyData();
+              }
             },
           ),
           // ─── 3-dot More Actions dropdown ─────────────────────────────
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert, color: Colors.black87),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            onSelected: (val) {
+            onSelected: (val) async {
               if (val == 'delete') {
                 _confirmDelete(context, liveCustomer);
               } else if (val == 'send_pdf') {
                 _sharePdfStatement(context, liveCustomer, allPartyInvoices);
               } else if (val == 'party_statement') {
-                Navigator.of(context).push(
+                await Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => PartyStatementScreen(customer: liveCustomer),
                   ),
                 );
+                if (mounted) _refreshPartyData();
               } else if (val == 'party_ledger') {
-                Navigator.of(context).push(
+                await Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => PartyLedgerSheetScreen(party: liveCustomer),
                   ),
                 );
+                if (mounted) _refreshPartyData();
               } else if (val == 'recycle_bin') {
-                Navigator.of(context).push(
+                await Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => RecycleBinScreen(
                       customerId: liveCustomer.id,
@@ -133,6 +171,7 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
                     ),
                   ),
                 );
+                if (mounted) _refreshPartyData();
               }
             },
             itemBuilder: (_) => [
@@ -478,36 +517,45 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
 
           // 3. Transactions List
           Expanded(
-            child: filteredInvoices.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.receipt_long_outlined, size: 48, color: Colors.grey.shade400),
-                        const SizedBox(height: 10),
-                        Text(
-                          _searchQuery.isNotEmpty
-                              ? 'No matching transactions found'
-                              : 'No transactions for this party yet',
-                          style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+            child: RefreshIndicator(
+              onRefresh: _refreshPartyData,
+              child: filteredInvoices.isEmpty
+                  ? SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 60),
+                        alignment: Alignment.center,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.receipt_long_outlined, size: 48, color: Colors.grey.shade400),
+                            const SizedBox(height: 10),
+                            Text(
+                              _searchQuery.isNotEmpty
+                                  ? 'No matching transactions found'
+                                  : 'No transactions for this party yet',
+                              style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                            ),
+                            const SizedBox(height: 6),
+                            const Text(
+                              'Tap "+" below to create a bill for this party.',
+                              style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 6),
-                        const Text(
-                          'Tap "+" below to create a bill for this party.',
-                          style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
-                        ),
-                      ],
+                      ),
+                    )
+                  : ListView.separated(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      itemCount: filteredInvoices.length,
+                      separatorBuilder: (context, index) => const SizedBox(height: 10),
+                      itemBuilder: (ctx, index) {
+                        final inv = filteredInvoices[index];
+                        return _buildPartyTransactionCard(context, inv, invoiceProvider);
+                      },
                     ),
-                  )
-                : ListView.separated(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    itemCount: filteredInvoices.length,
-                    separatorBuilder: (context, index) => const SizedBox(height: 10),
-                    itemBuilder: (ctx, index) {
-                      final inv = filteredInvoices[index];
-                      return _buildPartyTransactionCard(context, inv, invoiceProvider);
-                    },
-                  ),
+            ),
           ),
 
           // 4. Bottom Sticky Action Bar
@@ -571,13 +619,14 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
                   // Add Sale → directly to CreateInvoiceScreen
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: () {
+                      onPressed: () async {
                         HapticFeedback.lightImpact();
-                        Navigator.of(context).push(
+                        await Navigator.of(context).push(
                           MaterialPageRoute(
                             builder: (_) => CreateInvoiceScreen(preselectedCustomer: liveCustomer),
                           ),
                         );
+                        if (mounted) _refreshPartyData();
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.vyaparPink,
@@ -650,13 +699,14 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
                   iconColor: const Color(0xFF2563EB),
                   title: 'Sale Invoice',
                   subtitle: 'Create a new sale invoice for this party',
-                  onTap: () {
+                  onTap: () async {
                     Navigator.pop(ctx);
-                    Navigator.of(context).push(
+                    await Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => CreateInvoiceScreen(preselectedCustomer: customer),
                       ),
                     );
+                    if (mounted) _refreshPartyData();
                   },
                 ),
                 _ActionTile(
@@ -665,14 +715,15 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
                   iconColor: const Color(0xFFEA580C),
                   title: 'Purchase Transaction',
                   subtitle: 'Record a purchase from this party',
-                  onTap: () {
+                  onTap: () async {
                     Navigator.pop(ctx);
                     // Purchase transaction — for now navigates to invoice with a note
-                    Navigator.of(context).push(
+                    await Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => CreateInvoiceScreen(preselectedCustomer: customer),
                       ),
                     );
+                    if (mounted) _refreshPartyData();
                   },
                 ),
                 const SizedBox(height: 8),
@@ -696,10 +747,11 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
     final hasOver = invoice.hasOverMoney;
 
     return InkWell(
-      onTap: () {
-        Navigator.of(context).push(
+      onTap: () async {
+        await Navigator.of(context).push(
           MaterialPageRoute(builder: (ctx) => InvoiceDetailScreen(invoice: invoice)),
         );
+        if (mounted) _refreshPartyData();
       },
       borderRadius: BorderRadius.circular(14),
       child: Container(
@@ -767,6 +819,23 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
                               fontSize: 9.5,
                               fontWeight: FontWeight.w800,
                               color: Color(0xFF7C3AED),
+                            ),
+                          ),
+                        ),
+                      if (invoice.payments.length > 1)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEFF6FF),
+                            borderRadius: BorderRadius.circular(5),
+                            border: Border.all(color: const Color(0xFFBFDBFE), width: 0.8),
+                          ),
+                          child: Text(
+                            '${invoice.payments.length} PAYMENTS',
+                            style: const TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF1E40AF),
                             ),
                           ),
                         ),
@@ -930,23 +999,34 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  onSelected: (action) {
-                    if (action == 'mark_paid') {
-                      invoiceProvider.markInvoiceAsPaid(invoice.id);
+                  onSelected: (action) async {
+                    if (action == 'edit') {
+                      await Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => CreateInvoiceScreen(existingInvoice: invoice),
+                        ),
+                      );
+                      if (mounted) _refreshPartyData();
+                    } else if (action == 'mark_paid') {
+                      await invoiceProvider.markInvoiceAsPaid(invoice.id);
+                      if (mounted) _refreshPartyData();
                     } else if (action == 'delete') {
+                      final messenger = ScaffoldMessenger.of(context);
                       final invId = invoice.id;
                       final invNo = invoice.invoiceNumber;
-                      invoiceProvider.deleteInvoice(invId);
-                      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      await invoiceProvider.deleteInvoice(invId);
+                      if (mounted) _refreshPartyData();
+                      messenger.hideCurrentSnackBar();
+                      messenger.showSnackBar(
                         SnackBar(
                           content: Text('Sale #$invNo moved to Recycle Bin (kept for 30 days)'),
                           duration: const Duration(seconds: 5),
                           action: SnackBarAction(
                             label: 'Undo',
                             textColor: Colors.amberAccent,
-                            onPressed: () {
-                              invoiceProvider.restoreInvoice(invId);
+                            onPressed: () async {
+                              await invoiceProvider.restoreInvoice(invId, restoredInvoice: invoice);
+                              if (mounted) _refreshPartyData();
                             },
                           ),
                         ),
@@ -954,6 +1034,16 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
                     }
                   },
                   itemBuilder: (_) => [
+                    const PopupMenuItem(
+                      value: 'edit',
+                      child: Row(
+                        children: [
+                          Icon(Icons.edit_note, color: Color(0xFF2563EB), size: 18),
+                          SizedBox(width: 8),
+                          Text('Edit Sale & Payments'),
+                        ],
+                      ),
+                    ),
                     if (!isPaid)
                       const PopupMenuItem(
                         value: 'mark_paid',

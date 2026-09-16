@@ -9,6 +9,8 @@ import 'package:frontend/providers/invoice_provider.dart';
 import 'package:frontend/providers/product_provider.dart';
 import 'package:frontend/providers/auth_provider.dart';
 import 'package:frontend/screens/invoices/create_invoice_screen.dart';
+import 'package:frontend/screens/customers/party_statement_screen.dart';
+import 'package:frontend/models/customer_model.dart';
 import 'package:frontend/widgets/desktop_container.dart';
 
 void main() {
@@ -63,6 +65,83 @@ void main() {
         final renderBox = tester.renderObject<RenderBox>(desktopContainerFinder);
         debugPrint('DesktopContainer size: ${renderBox.size}');
       }
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    }
+  });
+
+  testWidgets('PartyStatementScreen renders with desktop expansion, toolbar toggles and hover buttons', (WidgetTester tester) async {
+    try {
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      tester.view.physicalSize = const Size(1920, 1080);
+      tester.view.devicePixelRatio = 1.0;
+
+      final authProvider = AuthProvider();
+      final businessProvider = BusinessProvider();
+      final customerProvider = CustomerProvider();
+      final invoiceProvider = InvoiceProvider();
+      final productProvider = ProductProvider();
+
+      final dummyCustomer = CustomerModel(
+        id: 'cust-101',
+        name: 'Royal Traders',
+        phone: '9876543210',
+        state: 'Andhra Pradesh',
+        openingBalance: 2500.0,
+      );
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider.value(value: authProvider),
+            ChangeNotifierProvider.value(value: businessProvider),
+            ChangeNotifierProvider.value(value: customerProvider),
+            ChangeNotifierProvider.value(value: invoiceProvider),
+            ChangeNotifierProvider.value(value: productProvider),
+          ],
+          child: MaterialApp(
+            home: PartyStatementScreen(customer: dummyCustomer),
+          ),
+        ),
+      );
+
+      await tester.pump();
+
+      // Verify PartyStatementScreen renders
+      expect(find.text('Party Statement'), findsOneWidget);
+      expect(find.text('Royal Traders'), findsOneWidget);
+
+      // Verify PDF and XLS buttons are present
+      expect(find.text('PDF'), findsOneWidget);
+      expect(find.text('XLS'), findsOneWidget);
+
+      // Verify Status Filter Chips are present
+      expect(find.textContaining('All ('), findsOneWidget);
+      expect(find.textContaining('Paid ('), findsOneWidget);
+      expect(find.textContaining('Pending ('), findsOneWidget);
+      expect(find.textContaining('Partial ('), findsOneWidget);
+
+      // Verify Columns toggle chips are present
+      expect(find.text('Description'), findsOneWidget);
+      expect(find.text('Payment Status'), findsOneWidget);
+
+      // Test tapping Description toggle
+      await tester.tap(find.text('Description'));
+      await tester.pump();
+
+      // Test tapping Payment Status toggle
+      await tester.tap(find.text('Payment Status'));
+      await tester.pump();
+
+      // Test selecting 'Paid' filter
+      await tester.tap(find.textContaining('Paid ('));
+      await tester.pump();
+
+      // Test selecting 'Pending' filter
+      await tester.tap(find.textContaining('Pending ('));
+      await tester.pump();
     } finally {
       debugDefaultTargetPlatformOverride = null;
       tester.view.resetPhysicalSize();
