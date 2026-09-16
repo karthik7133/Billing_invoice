@@ -68,9 +68,7 @@ class ApiClient {
     while (attempt <= maxRetries) {
       attempt++;
       try {
-        debugPrint('[API $method] Attempt $attempt/$maxRetries -> $url');
         final response = await action();
-        debugPrint('[API $method] Response (${response.statusCode}) <- $url');
 
         // Check if server is returning 502/503/504 Bad Gateway (Render container starting up)
         if ((response.statusCode == 502 || response.statusCode == 503 || response.statusCode == 504) && attempt <= maxRetries) {

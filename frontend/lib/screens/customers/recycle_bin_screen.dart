@@ -85,19 +85,34 @@ class _RecycleBinScreenState extends State<RecycleBinScreen> {
       });
 
       if (success) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.hideCurrentSnackBar();
+        final controller = messenger.showSnackBar(
           SnackBar(
             content: Text('Sale #${invoice.invoiceNumber} restored successfully'),
             backgroundColor: const Color(0xFF059669),
-            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            duration: const Duration(milliseconds: 2500),
+            dismissDirection: DismissDirection.down,
           ),
         );
+        Future.delayed(const Duration(milliseconds: 2600), () {
+          try {
+            controller.close();
+          } catch (_) {}
+        });
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to restore entry. Please try again.'),
-            backgroundColor: Color(0xFFEF4444),
+          SnackBar(
+            content: const Text('Failed to restore entry. Please try again.'),
+            backgroundColor: const Color(0xFFEF4444),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            duration: const Duration(milliseconds: 2500),
+            dismissDirection: DismissDirection.down,
           ),
         );
       }
@@ -161,12 +176,24 @@ class _RecycleBinScreenState extends State<RecycleBinScreen> {
               if (mounted) {
                 if (ok) {
                   _hasChanged = true;
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  final messenger = ScaffoldMessenger.of(context);
+                  messenger.hideCurrentSnackBar();
+                  final controller = messenger.showSnackBar(
                     SnackBar(
                       content: Text('Sale #${invoice.invoiceNumber} permanently deleted'),
                       backgroundColor: const Color(0xFF1E293B),
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      duration: const Duration(milliseconds: 2500),
+                      dismissDirection: DismissDirection.down,
                     ),
                   );
+                  Future.delayed(const Duration(milliseconds: 2600), () {
+                    try {
+                      controller.close();
+                    } catch (_) {}
+                  });
                 } else {
                   _loadRecycleBin();
                 }

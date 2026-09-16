@@ -1017,10 +1017,22 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
                       await invoiceProvider.deleteInvoice(invId);
                       if (mounted) _refreshPartyData();
                       messenger.hideCurrentSnackBar();
-                      messenger.showSnackBar(
+                      final snackBarController = messenger.showSnackBar(
                         SnackBar(
-                          content: Text('Sale #$invNo moved to Recycle Bin (kept for 30 days)'),
-                          duration: const Duration(seconds: 5),
+                          content: Row(
+                            children: [
+                              const Icon(Icons.delete_outline_rounded, color: Colors.amberAccent, size: 18),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text('Sale #$invNo moved to Recycle Bin'),
+                              ),
+                            ],
+                          ),
+                          behavior: SnackBarBehavior.floating,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          duration: const Duration(milliseconds: 2500),
+                          dismissDirection: DismissDirection.down,
                           action: SnackBarAction(
                             label: 'Undo',
                             textColor: Colors.amberAccent,
@@ -1031,6 +1043,11 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
                           ),
                         ),
                       );
+                      Future.delayed(const Duration(milliseconds: 2600), () {
+                        try {
+                          snackBarController.close();
+                        } catch (_) {}
+                      });
                     }
                   },
                   itemBuilder: (_) => [
@@ -1198,12 +1215,24 @@ class _PartyDetailsScreenState extends State<PartyDetailsScreen> {
                 }
 
                 Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(
+                final messenger = ScaffoldMessenger.of(context);
+                messenger.hideCurrentSnackBar();
+                final controller = messenger.showSnackBar(
                   SnackBar(
                     content: Text('Payment of ₹$val recorded for ${customer.name}'),
                     backgroundColor: AppColors.receivableGreen,
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    duration: const Duration(milliseconds: 2500),
+                    dismissDirection: DismissDirection.down,
                   ),
                 );
+                Future.delayed(const Duration(milliseconds: 2600), () {
+                  try {
+                    controller.close();
+                  } catch (_) {}
+                });
               }
             },
             child: const Text('Save Payment'),

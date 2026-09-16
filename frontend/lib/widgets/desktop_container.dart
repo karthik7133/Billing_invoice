@@ -27,7 +27,6 @@ class DesktopContainer extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        debugPrint('DesktopContainer constraints: $constraints');
         Widget content = ConstrainedBox(
           constraints: BoxConstraints(maxWidth: maxWidth),
           child: child,

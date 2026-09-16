@@ -428,10 +428,24 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                 final invProvider = Provider.of<InvoiceProvider>(context, listen: false);
                 invProvider.deleteInvoice(invId);
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
+                final messenger = ScaffoldMessenger.of(context);
+                messenger.hideCurrentSnackBar();
+                final snackBarController = messenger.showSnackBar(
                   SnackBar(
-                    content: Text('Sale #$invNo moved to Recycle Bin (kept for 30 days)'),
-                    duration: const Duration(seconds: 5),
+                    content: Row(
+                      children: [
+                        const Icon(Icons.delete_outline_rounded, color: Colors.amberAccent, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text('Sale #$invNo moved to Recycle Bin'),
+                        ),
+                      ],
+                    ),
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    duration: const Duration(milliseconds: 2500),
+                    dismissDirection: DismissDirection.down,
                     action: SnackBarAction(
                       label: 'Undo',
                       textColor: Colors.amberAccent,
@@ -439,6 +453,11 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                     ),
                   ),
                 );
+                Future.delayed(const Duration(milliseconds: 2600), () {
+                  try {
+                    snackBarController.close();
+                  } catch (_) {}
+                });
               }
             },
             itemBuilder: (c) => [
