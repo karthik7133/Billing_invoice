@@ -59,7 +59,7 @@ class _PartyLedgerSheetScreenState extends State<PartyLedgerSheetScreen> {
 
     final bShort = business.businessName.isNotEmpty
         ? business.businessName.split(' ').first.toUpperCase()
-        : 'JMJ';
+        : 'BUSINESS';
     final pName = widget.party.name.toUpperCase();
 
     _rows.clear();
@@ -396,9 +396,13 @@ class _PartyLedgerSheetScreenState extends State<PartyLedgerSheetScreen> {
   }
 
   void _showAddEntryDialog({bool defaultCredit = true}) {
+    final businessProvider = Provider.of<BusinessProvider>(context, listen: false);
+    final bShort = businessProvider.business.businessName.isNotEmpty
+        ? businessProvider.business.businessName.split(' ').first.toUpperCase()
+        : 'BUSINESS';
     DateTime pickedDate = DateTime.now();
     final descCtrl = TextEditingController(
-      text: defaultCredit ? 'JMJ TO ${widget.party.name.toUpperCase()} CASH PAID' : 'PUR + EXP',
+      text: defaultCredit ? '$bShort TO ${widget.party.name.toUpperCase()} CASH PAID' : 'PUR + EXP',
     );
     final amtCtrl = TextEditingController();
     bool isCredit = defaultCredit;
@@ -443,7 +447,7 @@ class _PartyLedgerSheetScreenState extends State<PartyLedgerSheetScreen> {
                         child: InkWell(
                           onTap: () => setModalState(() {
                             isCredit = true;
-                            descCtrl.text = 'JMJ TO ${widget.party.name.toUpperCase()} CASH PAID';
+                            descCtrl.text = '$bShort TO ${widget.party.name.toUpperCase()} CASH PAID';
                           }),
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 10),

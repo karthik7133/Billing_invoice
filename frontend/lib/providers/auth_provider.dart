@@ -132,44 +132,6 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  /// Demo mode — no account needed, local-only data
-  void loginAsDemo() {
-    debugPrint('[AuthProvider] Entering Demo Mode');
-    _user = UserModel(
-      id: 'user_demo',
-      name: 'Demo User',
-      email: 'demo@billing.app',
-      phone: '',
-    );
-    _business = BusinessModel(
-      id: 'biz_demo',
-      businessName: 'Modern Enterprises',
-      phone: '9876543210',
-      email: 'demo@billing.app',
-      address: 'Industrial Estate, Phase 2',
-      city: 'Visakhapatnam',
-      state: 'Andhra Pradesh',
-      stateCode: '37',
-      pincode: '530001',
-      gstin: '37AAAAA0000A1Z5',
-      pan: 'AAAAA0000A',
-      invoicePrefix: 'INV',
-      nextInvoiceNumber: 101,
-      bankDetails: BankDetails(
-        bankName: 'HDFC Bank',
-        accountHolderName: 'Modern Enterprises',
-        accountNumber: '50200012345678',
-        ifscCode: 'HDFC0001234',
-        branch: 'Main Branch',
-        upiId: 'enterprise@upi',
-      ),
-      termsAndConditions: '1. Goods once sold will not be taken back.\n2. Payment due within 15 days.',
-    );
-    _isAuthenticated = true;
-    _errorMessage = null;
-    notifyListeners();
-  }
-
   Future<void> fetchMe() async {
     debugPrint('[AuthProvider] fetchMe() called');
     final res = await _api.get(Endpoints.me);

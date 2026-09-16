@@ -77,7 +77,7 @@ class _ManageCompaniesScreenState extends State<ManageCompaniesScreen>
     final companies = businessProvider.companies;
     final userPhone = authProvider.user?.phone.isNotEmpty == true
         ? authProvider.user!.phone
-        : (currentBusiness.phone.isNotEmpty ? currentBusiness.phone : '9344920419');
+        : currentBusiness.phone;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF1F5F9),
@@ -347,10 +347,10 @@ class _ManageCompaniesScreenState extends State<ManageCompaniesScreen>
     bool isCurrent,
     BusinessProvider businessProvider,
   ) {
-    final phoneText = company.phone.isNotEmpty ? company.phone : '9344920419';
+    final phoneText = company.phone.isNotEmpty ? company.phone : '';
     final lastSaleText = company.lastSaleCreated.isNotEmpty
         ? 'Last Sale Created: ${company.lastSaleCreated}'
-        : 'Last Sale Created: ${DateFormat('dd/MM/yyyy').format(DateTime.now())} at 06:07 am';
+        : 'No sales created yet';
 
     return GestureDetector(
       onTap: () async {
@@ -693,10 +693,15 @@ class _ManageCompaniesScreenState extends State<ManageCompaniesScreen>
   // ─── Add Company Dialog ───────────────────────────────────────────────────
 
   void _showAddCompanyDialog(BuildContext context) {
+    final businessProvider = Provider.of<BusinessProvider>(context, listen: false);
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final defaultPhone = businessProvider.business.phone.isNotEmpty
+        ? businessProvider.business.phone
+        : (authProvider.user?.phone ?? '');
     final nameCtrl = TextEditingController();
-    final phoneCtrl = TextEditingController(text: '9344920419');
+    final phoneCtrl = TextEditingController(text: defaultPhone);
     final gstinCtrl = TextEditingController();
-    final cityCtrl = TextEditingController(text: 'Kakinada');
+    final cityCtrl = TextEditingController(text: businessProvider.business.city);
     String logoUrl = '';
     Uint8List? pendingLogoBytes;
     bool isUploadingLogo = false;

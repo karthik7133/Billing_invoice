@@ -10,28 +10,28 @@ class BusinessProvider with ChangeNotifier {
 
   List<BusinessModel> _companies = [];
   BusinessModel _business = BusinessModel(
-    id: 'comp_1',
-    businessName: 'JMJSEAFOODS',
-    phone: '9344920419',
+    id: 'default_comp',
+    businessName: '',
+    phone: '',
     email: '',
-    address: 'Main Road',
-    city: 'Kakinada',
+    address: '',
+    city: '',
     state: 'Andhra Pradesh',
     stateCode: '37',
-    pincode: '533001',
-    gstin: '37AAAAA0000A1Z5',
+    pincode: '',
+    gstin: '',
     pan: '',
-    invoicePrefix: 'AP',
+    invoicePrefix: 'INV',
     nextInvoiceNumber: 1,
     syncOn: true,
-    lastSaleCreated: '24/08/2026 at 06:07 am',
+    lastSaleCreated: '',
     bankDetails: BankDetails(
-      bankName: 'State Bank of India',
-      accountHolderName: 'JMJ SEAFOODS',
-      accountNumber: '123456789012',
-      ifscCode: 'SBIN0001234',
-      branch: 'Main Branch',
-      upiId: 'jmjseafoods@sbi',
+      bankName: '',
+      accountHolderName: '',
+      accountNumber: '',
+      ifscCode: '',
+      branch: '',
+      upiId: '',
     ),
     termsAndConditions:
         '1. Goods once sold will not be taken back or exchanged.\n2. Interest @18% p.a. will be charged if bill is not paid within 15 days.\n3. Subject to local jurisdiction only.',
@@ -61,42 +61,7 @@ class BusinessProvider with ChangeNotifier {
     if (cachedCompanies.isNotEmpty) {
       _companies = cachedCompanies;
     } else {
-      // Default seed companies matching the reference image
-      _companies = [
-        _business,
-        BusinessModel(
-          id: 'comp_2',
-          businessName: 'JJ SEA FOODS',
-          phone: '9344920419',
-          city: 'Visakhapatnam',
-          state: 'Andhra Pradesh',
-          stateCode: '37',
-          invoicePrefix: 'JJ',
-          syncOn: false,
-          lastSaleCreated: '25/08/2026 at 09:26 am',
-        ),
-        BusinessModel(
-          id: 'comp_3',
-          businessName: 'JMJ SEA FOODS',
-          phone: '9344920419',
-          city: 'Chennai',
-          state: 'Tamil Nadu',
-          stateCode: '33',
-          invoicePrefix: 'JMJ',
-          syncOn: false,
-          lastSaleCreated: '20/04/2026 at 10:18 am',
-        ),
-        BusinessModel(
-          id: 'comp_4',
-          businessName: 'My Company',
-          phone: '9344920419',
-          city: '',
-          state: 'Andhra Pradesh',
-          invoicePrefix: 'INV',
-          syncOn: false,
-          lastSaleCreated: '',
-        ),
-      ];
+      _companies = [_business];
       await _cache.saveCompanies(_companies);
     }
 

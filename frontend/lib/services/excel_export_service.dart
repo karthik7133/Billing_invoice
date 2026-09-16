@@ -31,7 +31,7 @@ class ExcelExportService {
     final dfmt = DateFormat('dd/MM/yyyy');
     final bName = business?.businessName.isNotEmpty == true
         ? business!.businessName
-        : 'JMJ SEA FOODS';
+        : 'My Business';
 
     int currentRow = 0;
 
@@ -870,7 +870,7 @@ class ExcelExportService {
 
     final bShort = business?.businessName.isNotEmpty == true
         ? business!.businessName.split(' ').first.toUpperCase()
-        : 'JMJ';
+        : 'BUSINESS';
     final pName = customer.name.toUpperCase();
 
     double totalDebit = 0;

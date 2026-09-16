@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -180,7 +180,7 @@ class PdfInvoiceService {
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
                     pw.Text(
-                      business.businessName.isNotEmpty ? business.businessName.toUpperCase() : 'JMJ SEA FOODS',
+                      business.businessName.isNotEmpty ? business.businessName.toUpperCase() : 'MY BUSINESS',
                       style: pw.TextStyle(
                         font: fontBold,
                         fontSize: 20,
@@ -630,7 +630,7 @@ class PdfInvoiceService {
     final b = business ??
         (invoices.isNotEmpty
             ? invoices.first.businessSnapshot
-            : BusinessModel(id: '', businessName: 'JMJ SEA FOODS', phone: '9010966188', email: 'donijoel12345@gmail.com'));
+            : BusinessModel(id: '', businessName: 'My Business', phone: '', email: ''));
 
     // Load fonts and logo in parallel — fonts are cached after first load
     final fontsFuture = _loadFonts();
@@ -735,7 +735,7 @@ class PdfInvoiceService {
                   crossAxisAlignment: pw.CrossAxisAlignment.end,
                   children: [
                     pw.Text(
-                      b.businessName.isNotEmpty ? b.businessName.toUpperCase() : 'JMJ SEA FOODS',
+                      b.businessName.isNotEmpty ? b.businessName.toUpperCase() : 'MY BUSINESS',
                       style: pw.TextStyle(
                         font: fontBold,
                         fontSize: 16,
@@ -1068,7 +1068,7 @@ class PdfInvoiceService {
     final b = business ??
         (invoices.isNotEmpty
             ? invoices.first.businessSnapshot
-            : BusinessModel(id: '', businessName: 'JMJ SEA FOODS', phone: '9010966188', email: 'donijoel12345@gmail.com'));
+            : BusinessModel(id: '', businessName: 'My Business', phone: '', email: ''));
 
     // Load fonts and logo in parallel — fonts are cached after first load
     final fontsFuture = _loadFonts();
@@ -1188,7 +1188,7 @@ class PdfInvoiceService {
                   crossAxisAlignment: pw.CrossAxisAlignment.end,
                   children: [
                     pw.Text(
-                      b.businessName.isNotEmpty ? b.businessName.toUpperCase() : 'JMJ SEA FOODS',
+                      b.businessName.isNotEmpty ? b.businessName.toUpperCase() : 'MY BUSINESS',
                       style: pw.TextStyle(
                         font: fontBold,
                         fontSize: 16,

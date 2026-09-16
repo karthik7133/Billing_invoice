@@ -550,7 +550,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                                 textCapitalization: TextCapitalization.characters,
                                 style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
                                 decoration: InputDecoration(
-                                  hintText: 'e.g. MY, JMJ, TN...',
+                                  hintText: 'e.g. INV, BILL, TN...',
                                   hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF9CA3AF)),
                                   filled: true,
                                   fillColor: const Color(0xFFF8FAFC),
